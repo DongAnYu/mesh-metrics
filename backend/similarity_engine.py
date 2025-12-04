@@ -68,7 +68,19 @@ def canonicalize_points(points):
 def safe_sample(mesh, n_points, diag, label="mesh"):
     # If this is a Scene, merge to a single mesh
     if isinstance(mesh, trimesh.Scene):
-        mesh = mesh.dump().sum()
+        # dump() returns a list of meshes
+        mesh_list = mesh.dump()
+        
+        # If list is empty, raise error
+        if not mesh_list:
+            raise ValueError(f"{label} scene is empty, cannot sample.")
+        
+        # If single mesh in list, use it directly
+        if len(mesh_list) == 1:
+            mesh = mesh_list[0]
+        else:
+            # Multiple meshes - concatenate them
+            mesh = trimesh.util.concatenate(mesh_list)
 
     # Check if mesh is valid for surface sampling
     if mesh.is_empty or mesh.faces is None or len(mesh.faces) == 0 or mesh.area < 1e-9:
@@ -142,6 +154,25 @@ def chamfer_distance(A, B):
 
 
 # -------------------------------------------------
+# Helper to get single mesh from Scene or Mesh
+# -------------------------------------------------
+def ensure_single_mesh(mesh_obj, label="mesh"):
+    """Convert Scene to single mesh, or return mesh as-is"""
+    if isinstance(mesh_obj, trimesh.Scene):
+        mesh_list = mesh_obj.dump()
+        
+        if not mesh_list:
+            raise ValueError(f"{label} scene is empty.")
+        
+        if len(mesh_list) == 1:
+            return mesh_list[0]
+        else:
+            return trimesh.util.concatenate(mesh_list)
+    
+    return mesh_obj
+
+
+# -------------------------------------------------
 # Metric Computation (Volume, Area, BBox, etc.)
 # -------------------------------------------------
 def similarity_exponential(value, sharpness):
@@ -151,6 +182,9 @@ def similarity_from_relative_diff(diff, cap=1.0):
     return max(0.0, 1.0 - min(diff, cap) / cap)
 
 def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist):
+    # Ensure we have single meshes for metric computation
+    gt_mesh = ensure_single_mesh(gt_mesh, "Ground truth")
+    comp_mesh = ensure_single_mesh(comp_mesh, "Comparison")
 
     volA = gt_mesh.volume
     volB = comp_mesh.volume
