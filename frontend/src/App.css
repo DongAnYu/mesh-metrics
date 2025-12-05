@@ -164,10 +164,142 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   color: #334155;
   font-weight: 500;
   font-size: 1rem;
+}
+
+.weight-description {
+  font-size: 0.813rem;
+  color: #64748b;
+  margin: 0 0 0.75rem 0;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.section-description {
+  font-size: 0.938rem;
+  color: #64748b;
+  margin: -0.5rem 0 1.5rem 0;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.sharpness-explanation {
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  border-radius: 8px;
+}
+
+.sharpness-explanation p {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  color: #92400e;
+}
+
+.sharpness-explanation p:first-child {
+  margin-top: 0;
+}
+
+.sharpness-explanation p:last-child {
+  margin-bottom: 0;
+}
+
+.formula-note {
+  font-family: 'Courier New', monospace;
+  font-size: 0.813rem !important;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.75rem !important;
+}
+
+.sharpness-item {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #fbbf24;
+}
+
+.sharpness-slider {
+  background: #fbbf24;
+}
+
+.sharpness-slider::-webkit-slider-thumb {
+  background: #f59e0b;
+}
+
+.sharpness-slider::-webkit-slider-thumb:hover {
+  background: #d97706;
+}
+
+.sharpness-slider::-moz-range-thumb {
+  background: #f59e0b;
+}
+
+.sharpness-slider::-moz-range-thumb:hover {
+  background: #d97706;
+}
+
+.sharpness-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #92400e;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #d1fae5;
+}
+
+.metric-card h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #15803d;
+  margin: 0.5rem 0;
+}
+
+.metric-detail {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0.25rem 0 0 0;
+}
+
+.results-details {
+  margin-top: 1.5rem;
+}
+
+.results-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #334155;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.results-details summary:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .weight-value {

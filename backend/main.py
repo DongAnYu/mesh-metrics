@@ -17,18 +17,24 @@ app.add_middleware(
 async def compare(
     fileA: UploadFile = File(...),
     fileB: UploadFile = File(...),
-    weights: str = Form(None)
+    weights: str = Form(None),
+    sharpness: str = Form(None)
 ):
     user_weights = None
     if weights:
         user_weights = json.loads(weights)
 
+    user_sharpness = None
+    if sharpness:
+        user_sharpness = json.loads(sharpness)
+
     try:
         sim = compute_similarity(
-            await fileA.read(),
-            await fileB.read(),
-            user_weights
-        )
+        await fileA.read(),
+        await fileB.read(),
+        user_weights,
+        user_sharpness  
+    )
         return sim
 
     except ValueError as e:

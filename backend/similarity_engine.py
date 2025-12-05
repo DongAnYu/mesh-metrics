@@ -16,7 +16,15 @@ DEFAULT_WEIGHTS = {
 }
 
 # -------------------------------------------------
-# Validate incoming user weight dictionary
+# Default Sharpness
+# -------------------------------------------------
+DEFAULT_SHARPNESS = {
+    "chamfer": 10,
+    "maxdist": 10
+}
+
+# -------------------------------------------------
+# Validate incoming user weight dictionary 
 # -------------------------------------------------
 def validate_weights(weights):
     required = list(DEFAULT_WEIGHTS.keys())
@@ -39,6 +47,22 @@ def validate_weights(weights):
 
     return numeric_weights
 
+# -------------------------------------------------
+# Validate incoming user sharpness dictionary 
+# -------------------------------------------------
+def validate_sharpness(sharpness):
+    required = ["chamfer", "maxdist"]
+
+    for k in required:
+        if k not in sharpness:
+            raise ValueError(f"Missing sharpness key: '{k}' (required: {required})")
+
+    try:
+        numeric_sharpness = {k: float(v) for k, v in sharpness.items()}
+    except:
+        raise ValueError("All sharpness values must be numeric.")
+
+    return numeric_sharpness
 
 # -------------------------------------------------
 # PCA canonicalization
@@ -97,10 +121,10 @@ def align_meshes(gt_mesh, comp_mesh):
         diag = 1.0
 
     np.random.seed(42)
-    PA = safe_sample(gt_mesh, 8000, diag, label="Preview A mesh")
+    PA = safe_sample(gt_mesh, 20000, diag, label="Preview A mesh")
 
     np.random.seed(42)
-    PB = safe_sample(comp_mesh, 8000, diag, label="Preview B mesh")
+    PB = safe_sample(comp_mesh, 20000, diag, label="Preview B mesh")
 
     PA_canon = canonicalize_points(PA)
 
@@ -181,7 +205,7 @@ def similarity_exponential(value, sharpness):
 def similarity_from_relative_diff(diff, cap=1.0):
     return max(0.0, 1.0 - min(diff, cap) / cap)
 
-def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist):
+def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
     # Ensure we have single meshes for metric computation
     gt_mesh = ensure_single_mesh(gt_mesh, "Ground truth")
     comp_mesh = ensure_single_mesh(comp_mesh, "Comparison")
@@ -214,11 +238,11 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist):
         bbox_diff = np.linalg.norm(bboxA - bboxB) / (np.linalg.norm(bboxA) + 1e-9)
 
 
-    S_chamfer = similarity_exponential(chamfer, 3)
+    S_chamfer = similarity_exponential(chamfer, S["chamfer"])
     S_volume  = similarity_from_relative_diff(vol_diff)
     S_area    = similarity_from_relative_diff(area_diff)
     S_bbox    = similarity_from_relative_diff(bbox_diff)
-    S_maxdist = similarity_exponential(max_dist, 2)
+    S_maxdist = similarity_exponential(max_dist, S["maxdist"])
 
     return {
         "S_chamfer": S_chamfer,
@@ -237,7 +261,7 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist):
 # -------------------------------------------------
 # Main Compute Function (FastAPI calls this)
 # -------------------------------------------------
-def compute_similarity(bytesA, bytesB, user_weights=None):
+def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
     meshA = trimesh.load(BytesIO(bytesA), file_type="stl")
     meshB = trimesh.load(BytesIO(bytesB), file_type="stl")
 
@@ -245,7 +269,7 @@ def compute_similarity(bytesA, bytesB, user_weights=None):
 
     chamfer, max_dist = chamfer_distance(A, B)
 
-    metrics = compute_mesh_metrics(meshA, meshB, chamfer, max_dist)
+    metrics = compute_mesh_metrics(meshA, meshB, chamfer, max_dist, user_sharpness)
 
     # ---------------------------------
     # Weight selection (user / default)
@@ -255,6 +279,12 @@ def compute_similarity(bytesA, bytesB, user_weights=None):
     else:
         W = validate_weights(user_weights)
 
+    # Validate and use sharpness
+    if user_sharpness is None:
+        S = DEFAULT_SHARPNESS  # { chamfer: 10, maxdist: 10 }
+    else:
+        S = validate_sharpness(user_sharpness) 
+    
     # ---------------------------------
     # Weighted final similarity
     # ---------------------------------
