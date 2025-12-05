@@ -97,10 +97,10 @@ def align_meshes(gt_mesh, comp_mesh):
         diag = 1.0
 
     np.random.seed(42)
-    PA = safe_sample(gt_mesh, 8000, diag, label="Preview A mesh")
+    PA = safe_sample(gt_mesh, 20000, diag, label="Preview A mesh")
 
     np.random.seed(42)
-    PB = safe_sample(comp_mesh, 8000, diag, label="Preview B mesh")
+    PB = safe_sample(comp_mesh, 20000, diag, label="Preview B mesh")
 
     PA_canon = canonicalize_points(PA)
 
@@ -214,11 +214,11 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist):
         bbox_diff = np.linalg.norm(bboxA - bboxB) / (np.linalg.norm(bboxA) + 1e-9)
 
 
-    S_chamfer = similarity_exponential(chamfer, 3)
+    S_chamfer = similarity_exponential(chamfer, 10)
     S_volume  = similarity_from_relative_diff(vol_diff)
     S_area    = similarity_from_relative_diff(area_diff)
     S_bbox    = similarity_from_relative_diff(bbox_diff)
-    S_maxdist = similarity_exponential(max_dist, 2)
+    S_maxdist = similarity_exponential(max_dist, 10)
 
     return {
         "S_chamfer": S_chamfer,

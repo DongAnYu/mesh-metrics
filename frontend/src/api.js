@@ -4,7 +4,7 @@ export async function computeSimilarity(fileA, fileB, weights) {
   form.append("fileB", fileB);
   form.append("weights", JSON.stringify(weights));
 
-  const res = await fetch("https://mesh-metrics.onrender.com/compare", {
+  const res = await fetch("http://localhost:8000/compare", {
     method: "POST",
     body: form
   });

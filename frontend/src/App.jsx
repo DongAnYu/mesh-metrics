@@ -65,7 +65,7 @@ export default function App() {
   return (
     <div className="app-container">
       <div className="app-card">
-        <h2 className="app-title">STL Similarity Checker</h2>
+        <h2 className="app-title">Instant STL Similarity Checker</h2>
 
         <div className="file-uploads">
           <div className="file-upload-box">
