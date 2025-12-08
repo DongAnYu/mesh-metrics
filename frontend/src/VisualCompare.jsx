@@ -63,7 +63,7 @@ function Model({ url, color, opacity, animating, phase }) {
 export default function VisualCompare({ fileA, fileB }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
-  const [opacity, setOpacity] = useState(0.6);
+  const [opacity, setOpacity] = useState(0.3);
   const [colorScheme, setColorScheme] = useState("green-red");
   const [showA, setShowA] = useState(true);
   const [showB, setShowB] = useState(true);

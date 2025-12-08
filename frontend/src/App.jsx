@@ -12,11 +12,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("preview"); // "preview" or "compare"
 
   const [weights, setWeights] = useState({
-    chamfer: 0.50,
-    volume: 0.25,
-    area: 0.15,
-    bbox: 0.05,
-    maxdist: 0.05,
+    "chamfer": 0.6,
+    "volume": 0.2,
+    "area":   0.15,
+    "bbox":   0.0,
+    "maxdist":0.05,
   });
 
   const [strictness, setStrictness] = useState({
