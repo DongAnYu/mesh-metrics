@@ -26,18 +26,68 @@ const COLOR_SCHEMES = {
   }
 };
 
-function Model({ url, color, opacity, animating, phase }) {
+
+function Model({ url, color, opacity, animating, phase, matrix }) {
   const meshRef = useRef();
   const geometry = useLoader(STLLoader, url);
   const [time, setTime] = useState(0);
+
+  // Convert a nested row-major 4x4 matrix ([[r0],[r1],...]) to a
+  // column-major flat array for three.js Matrix4.fromArray
+  function rowMajorToColumnMajorFlat(m) {
+    if (!Array.isArray(m)) return m;
+    // accept either flat 16 array or 4x4 nested arrays
+    if (m.length === 16 && !Array.isArray(m[0])) return m;
+    const out = new Array(16);
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        out[c * 4 + r] = m[r][c];
+      }
+    }
+    return out;
+  }
+
+  // Reset position when matrix is removed or applied
+  useEffect(() => {
+    if (!meshRef.current) return;
+
+    if (matrix) {
+      try {
+        // Apply transformation correctly
+  const m = new THREE.Matrix4();
+  const flat = rowMajorToColumnMajorFlat(matrix);
+  m.fromArray(flat);
+        
+        // Decompose the matrix into position, rotation, and scale
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        m.decompose(position, quaternion, scale);
+        
+        // Apply to the mesh
+        meshRef.current.position.copy(position);
+        meshRef.current.quaternion.copy(quaternion);
+        meshRef.current.scale.copy(scale);
+        
+        console.log("🔧 B centroid AFTER transform:", position.toArray());
+      } catch (error) {
+        console.error("Error applying transform:", error);
+      }
+    } else {
+      // Reset to identity when matrix is null (show raw)
+      meshRef.current.position.set(0, 0, 0);
+      meshRef.current.quaternion.identity();
+      meshRef.current.scale.set(1, 1, 1);
+    }
+  }, [matrix]);
 
   useEffect(() => {
     if (!animating) return;
     
     const interval = setInterval(() => {
-      setTime(t => t + 0.1);
+      setTime(t => t + 0.05);
     }, 50);
-
+    
     return () => clearInterval(interval);
   }, [animating]);
 
@@ -60,7 +110,7 @@ function Model({ url, color, opacity, animating, phase }) {
   );
 }
 
-export default function VisualCompare({ fileA, fileB }) {
+export default function VisualCompare({ fileA, fileB, transformB, onAlign  }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
   const [opacity, setOpacity] = useState(0.3);
@@ -68,12 +118,16 @@ export default function VisualCompare({ fileA, fileB }) {
   const [showA, setShowA] = useState(true);
   const [showB, setShowB] = useState(true);
   const [animating, setAnimating] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
+  const [alignStatus, setAlignStatus] = useState("");
 
   useEffect(() => {
     if (fileA) {
       const url = URL.createObjectURL(fileA);
       setUrlA(url);
       return () => URL.revokeObjectURL(url);
+    } else {
+      setUrlA(null);
     }
   }, [fileA]);
 
@@ -82,8 +136,15 @@ export default function VisualCompare({ fileA, fileB }) {
       const url = URL.createObjectURL(fileB);
       setUrlB(url);
       return () => URL.revokeObjectURL(url);
+    } else {
+      setUrlB(null);
     }
   }, [fileB]);
+
+  useEffect(() => {
+    console.log("🧭 transformB in VisualCompare:", transformB);
+  }, [transformB]);
+
 
   if (!fileA || !fileB) {
     return (
@@ -94,6 +155,20 @@ export default function VisualCompare({ fileA, fileB }) {
   }
 
   const scheme = COLOR_SCHEMES[colorScheme];
+
+  const handleAlign = async () => {
+    if (!fileA || !fileB) return;
+    
+    setAlignStatus("Aligning...");
+    try {
+      await onAlign();
+      setShowRaw(false);
+      setAlignStatus("Aligned ✓");
+    } catch (e) {
+      setAlignStatus(`Error: ${e.message}`);
+      console.error("Alignment error:", e);
+    }
+  };
 
   return (
     <div className="visual-compare">
@@ -153,6 +228,43 @@ export default function VisualCompare({ fileA, fileB }) {
             {animating ? "⏸ Stop" : "▶ Animate"}
           </button>
         </div>
+
+        <div className="control-button-group" style={{ marginTop: "12px" }}>
+          <button
+            onClick={handleAlign}
+            className="control-button"
+            style={{ 
+              flex: 1,
+              background: "linear-gradient(135deg, #10b981, #059669)",
+              color: "white"
+            }}
+          >
+            Auto-Align Models
+          </button>
+          {transformB && (
+            <button
+              onClick={() => setShowRaw(!showRaw)}
+              className={`control-button ${showRaw ? "active" : ""}`}
+              style={{ flex: 1 }}
+            >
+              {showRaw ? "Show Aligned" : "Show Raw"}
+            </button>
+          )}
+        </div>
+
+        {alignStatus && (
+          <div style={{ 
+            marginTop: "8px", 
+            padding: "8px 12px", 
+            background: alignStatus.includes("✓") ? "#d1fae5" : alignStatus.includes("Error") ? "#fee2e2" : "#fef3c7",
+            color: alignStatus.includes("✓") ? "#065f46" : alignStatus.includes("Error") ? "#991b1b" : "#92400e",
+            borderRadius: "6px",
+            fontSize: "14px",
+            textAlign: "center"
+          }}>
+            {alignStatus}
+          </div>
+        )}
       </div>
 
       <div className="visual-compare-legend">
@@ -173,7 +285,13 @@ export default function VisualCompare({ fileA, fileB }) {
       </div>
 
       <div className="visual-compare-canvas">
-        <Canvas camera={{ position: [3, 3, 3], fov: 50 }}>
+        <Canvas 
+          camera={{ position: [3, 3, 3], fov: 50 }}
+          gl={{ preserveDrawingBuffer: true }}
+          onCreated={({ gl }) => {
+            gl.setClearColor('#f0f0f0', 1);
+          }}
+        >
           <OrbitControls enableDamping dampingFactor={0.05} />
           <ambientLight intensity={0.6} />
           <directionalLight position={[10, 10, 5]} intensity={0.8} />
@@ -189,12 +307,13 @@ export default function VisualCompare({ fileA, fileB }) {
             />
           )}
           {urlB && showB && (
-            <Model 
-              url={urlB} 
+            <Model
+              url={urlB}
               color={scheme.color2}
               opacity={opacity}
               animating={animating}
               phase={Math.PI}
+              matrix={showRaw ? null : transformB}
             />
           )}
         </Canvas>

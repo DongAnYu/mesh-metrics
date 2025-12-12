@@ -3,6 +3,7 @@ import { computeSimilarity } from "./api";
 import "./App.css";
 import STLViewer from "./STLViewer";
 import VisualCompare from "./VisualCompare";
+import { computeAlignment } from "./api";
 
 export default function App() {
   const [fileA, setFileA] = useState(null);
@@ -10,6 +11,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("");
   const [activeTab, setActiveTab] = useState("preview"); // "preview" or "compare"
+  const [alignment, setAlignment] = useState(null);
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -85,6 +87,25 @@ export default function App() {
     }
   }
 
+  async function handleAutoAlign() {
+    if (!fileA || !fileB) {
+      setStatus("Please upload both STL files.");
+      return;
+    }
+
+    setStatus("Computing alignment...");
+    
+    try {
+      const alignResult = await computeAlignment(fileA, fileB);
+      console.log("📍 Alignment result:", alignResult);
+      setAlignment(alignResult.transform);
+      setStatus("Models aligned!");
+    } catch (err) {
+      setStatus(`Alignment error: ${err.message}`);
+      console.error(err);
+    }
+  }
+
   return (
     <div className="app-container">
       <div className="app-card">
@@ -138,12 +159,17 @@ export default function App() {
 
             <div className="viewer-box">
               <h4>Preview B</h4>
-              <STLViewer file={fileB} />
+              <STLViewer file={fileB} matrix={alignment} />
             </div>
           </div>
         ) : (
           <div className="visual-compare-container">
-            <VisualCompare fileA={fileA} fileB={fileB} />
+            <VisualCompare
+              fileA={fileA}
+              fileB={fileB}
+              transformB={alignment}
+              onAlign={handleAutoAlign}
+            />
           </div>
         )}
 
@@ -292,12 +318,18 @@ export default function App() {
           </div>
         </div>
 
-        <button onClick={handleCompare} className="compare-button">
-          Calculate Similarity Score
-        </button>
+        <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
+          <button
+            onClick={handleCompare}
+            className="compare-button"
+            style={{ flex: 1 }}
+          >
+            Calculate Similarity
+          </button>
+        </div>
 
         <p className="status-text">{status}</p>
-
+        
         {result && (
           <div className="results-box">
             <h3 className="results-title">Results:</h3>
