@@ -29,9 +29,40 @@ def compute_alignment(meshA, meshB):
     meshA = ensure_single_mesh(meshA, "A")
     meshB = ensure_single_mesh(meshB, "B")
 
-    # --- Compute centroids ---
-    centroid_A = meshA.vertices.mean(axis=0)
-    centroid_B = meshB.vertices.mean(axis=0)
+    def surface_centroid(mesh):
+        """Compute the area-weighted centroid of the mesh surface.
+
+        Uses triangle centroids weighted by triangle area. This is
+        robust to non-uniform vertex density and better reflects the
+        geometric(surface) center of mass.
+        """
+        faces = mesh.faces
+        vertices = mesh.vertices
+
+        if faces is None or len(faces) == 0:
+            raise ValueError("Mesh has no faces to compute surface centroid")
+
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
+
+        # triangle centroids
+        tri_centroids = (v0 + v1 + v2) / 3.0
+
+        # triangle areas (0.5 * |(v1-v0) x (v2-v0)|)
+        cross = np.cross(v1 - v0, v2 - v0)
+        tri_areas = np.linalg.norm(cross, axis=1) * 0.5
+
+        total_area = np.sum(tri_areas)
+        if total_area < 1e-12:
+            raise ValueError("Mesh has near-zero surface area")
+
+        centroid = np.sum(tri_centroids * tri_areas[:, None], axis=0) / total_area
+        return centroid
+
+    # --- Compute centroids (area-weighted surface centroids) ---
+    centroid_A = surface_centroid(meshA)
+    centroid_B = surface_centroid(meshB)
 
     # --- Translation needed to move B → A ---
     translation = centroid_A - centroid_B

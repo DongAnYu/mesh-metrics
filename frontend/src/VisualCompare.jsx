@@ -28,15 +28,16 @@ const COLOR_SCHEMES = {
 
 
 function Model({ url, color, opacity, animating, phase, matrix }) {
+  const groupRef = useRef();
   const meshRef = useRef();
   const geometry = useLoader(STLLoader, url);
   const [time, setTime] = useState(0);
+  const [centroid, setCentroid] = useState(null);
+  const [transformedCentroid, setTransformedCentroid] = useState(null);
 
-  // Convert a nested row-major 4x4 matrix ([[r0],[r1],...]) to a
-  // column-major flat array for three.js Matrix4.fromArray
+  // Convert a nested row-major 4x4 matrix to column-major flat array
   function rowMajorToColumnMajorFlat(m) {
     if (!Array.isArray(m)) return m;
-    // accept either flat 16 array or 4x4 nested arrays
     if (m.length === 16 && !Array.isArray(m[0])) return m;
     const out = new Array(16);
     for (let r = 0; r < 4; r++) {
@@ -47,66 +48,106 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
     return out;
   }
 
-  // Reset position when matrix is removed or applied
+  // Compute centroid from geometry
   useEffect(() => {
-    if (!meshRef.current) return;
-
-    if (matrix) {
-      try {
-        // Apply transformation correctly
-  const m = new THREE.Matrix4();
-  const flat = rowMajorToColumnMajorFlat(matrix);
-  m.fromArray(flat);
-        
-        // Decompose the matrix into position, rotation, and scale
-        const position = new THREE.Vector3();
-        const quaternion = new THREE.Quaternion();
-        const scale = new THREE.Vector3();
-        m.decompose(position, quaternion, scale);
-        
-        // Apply to the mesh
-        meshRef.current.position.copy(position);
-        meshRef.current.quaternion.copy(quaternion);
-        meshRef.current.scale.copy(scale);
-        
-        console.log("🔧 B centroid AFTER transform:", position.toArray());
-      } catch (error) {
-        console.error("Error applying transform:", error);
-      }
-    } else {
-      // Reset to identity when matrix is null (show raw)
-      meshRef.current.position.set(0, 0, 0);
-      meshRef.current.quaternion.identity();
-      meshRef.current.scale.set(1, 1, 1);
+    if (!geometry || !geometry.attributes || !geometry.attributes.position) return;
+    const posArr = geometry.attributes.position.array;
+    const n = posArr.length / 3;
+    if (n === 0) return;
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < posArr.length; i += 3) {
+      cx += posArr[i];
+      cy += posArr[i + 1];
+      cz += posArr[i + 2];
     }
-  }, [matrix]);
+    cx /= n; cy /= n; cz /= n;
+    setCentroid([cx, cy, cz]);
+  }, [geometry]);
+
+  // Apply transform to group and compute transformed centroid
+  useEffect(() => {
+    if (!groupRef.current) return;
+
+    // Reset transform
+    groupRef.current.position.set(0,0,0);
+    groupRef.current.quaternion.identity();
+    groupRef.current.scale.set(1,1,1);
+
+    if (!matrix) {
+      setTransformedCentroid(null);
+      return;
+    }
+
+    try {
+      const m = new THREE.Matrix4();
+      m.fromArray(rowMajorToColumnMajorFlat(matrix));
+
+      const position = new THREE.Vector3();
+      const quaternion = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      m.decompose(position, quaternion, scale);
+
+      groupRef.current.position.copy(position);
+      groupRef.current.quaternion.copy(quaternion);
+      groupRef.current.scale.copy(scale);
+
+      if (centroid) {
+        const v = new THREE.Vector3(centroid[0], centroid[1], centroid[2]);
+        v.applyMatrix4(m);
+        setTransformedCentroid(v.toArray());
+        console.log("🔧 B centroid AFTER transform:", v.toArray());
+      }
+    } catch (error) {
+      console.error("Error applying transform:", error);
+    }
+  }, [matrix, centroid]);
 
   useEffect(() => {
     if (!animating) return;
-    
-    const interval = setInterval(() => {
-      setTime(t => t + 0.05);
-    }, 50);
-    
+    const interval = setInterval(() => setTime(t => t + 0.05), 50);
     return () => clearInterval(interval);
   }, [animating]);
 
-  const currentOpacity = animating 
+  const currentOpacity = animating
     ? 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(time + phase))
     : opacity;
 
+  const markerSize = (() => {
+    if (geometry && geometry.boundingSphere) return geometry.boundingSphere.radius * 0.02;
+    if (geometry) { geometry.computeBoundingSphere(); return geometry.boundingSphere ? geometry.boundingSphere.radius * 0.02 : 0.01; }
+    return 0.01;
+  })();
+
   return (
-    <mesh ref={meshRef} geometry={geometry}>
-      <meshStandardMaterial
-        color={color}
-        transparent
-        opacity={currentOpacity}
-        side={THREE.DoubleSide}
-        depthWrite={opacity > 0.95}
-        metalness={0.1}
-        roughness={0.4}
-      />
-    </mesh>
+    <>
+      <group ref={groupRef}>
+        <mesh ref={meshRef} geometry={geometry}>
+          <meshStandardMaterial
+            color={color}
+            transparent
+            opacity={currentOpacity}
+            side={THREE.DoubleSide}
+            depthWrite={opacity > 0.95}
+            metalness={0.1}
+            roughness={0.4}
+          />
+        </mesh>
+
+        {centroid && (
+          <mesh position={centroid}>
+            <sphereGeometry args={[markerSize, 12, 12]} />
+            <meshStandardMaterial color={new THREE.Color(0x0064fa)} />
+          </mesh>
+        )}
+      </group>
+
+      {transformedCentroid && (
+        <mesh position={transformedCentroid}>
+          <sphereGeometry args={[markerSize * 1.2, 12, 12]} />
+          <meshStandardMaterial color={new THREE.Color(0xfaa500)} />
+        </mesh>
+      )}
+    </>
   );
 }
 

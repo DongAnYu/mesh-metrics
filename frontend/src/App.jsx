@@ -12,6 +12,8 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [activeTab, setActiveTab] = useState("preview"); // "preview" or "compare"
   const [alignment, setAlignment] = useState(null);
+  const [surfaceCentroidA, setSurfaceCentroidA] = useState(null);
+  const [surfaceCentroidB, setSurfaceCentroidB] = useState(null);
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -99,6 +101,9 @@ export default function App() {
       const alignResult = await computeAlignment(fileA, fileB);
       console.log("📍 Alignment result:", alignResult);
       setAlignment(alignResult.transform);
+      // store backend-provided surface centroids (area-weighted)
+      setSurfaceCentroidA(alignResult.centroidA || null);
+      setSurfaceCentroidB(alignResult.centroidB || null);
       setStatus("Models aligned!");
     } catch (err) {
       setStatus(`Alignment error: ${err.message}`);
@@ -154,12 +159,12 @@ export default function App() {
           <div className="file-viewers">
             <div className="viewer-box">
               <h4>Preview A</h4>
-              <STLViewer file={fileA} />
+              <STLViewer file={fileA} centroid={surfaceCentroidA} />
             </div>
 
             <div className="viewer-box">
               <h4>Preview B</h4>
-              <STLViewer file={fileB} matrix={alignment} />
+              <STLViewer file={fileB} matrix={alignment} centroid={surfaceCentroidB} />
             </div>
           </div>
         ) : (
