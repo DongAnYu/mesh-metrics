@@ -12,6 +12,7 @@ export default function App() {
   const [status, setStatus] = useState("");
   const [activeTab, setActiveTab] = useState("preview"); // "preview" or "compare"
   const [alignment, setAlignment] = useState(null);
+  const [alignmentResult, setAlignmentResult] = useState(null);
   const [surfaceCentroidA, setSurfaceCentroidA] = useState(null);
   const [surfaceCentroidB, setSurfaceCentroidB] = useState(null);
 
@@ -99,11 +100,13 @@ export default function App() {
     
     try {
       const alignResult = await computeAlignment(fileA, fileB);
-      console.log("📍 Alignment result:", alignResult);
-      setAlignment(alignResult.transform);
-      // store backend-provided surface centroids (area-weighted)
-      setSurfaceCentroidA(alignResult.centroidA || null);
-      setSurfaceCentroidB(alignResult.centroidB || null);
+  console.log("📍 Alignment result:", alignResult);
+  // save the full result so the UI can show rotation/chamfer diagnostics
+  setAlignmentResult(alignResult);
+  setAlignment(alignResult.transform);
+  // store backend-provided surface centroids (area-weighted)
+  setSurfaceCentroidA(alignResult.centroidA || null);
+  setSurfaceCentroidB(alignResult.centroidB || null);
       setStatus("Models aligned!");
     } catch (err) {
       setStatus(`Alignment error: ${err.message}`);
@@ -334,6 +337,24 @@ export default function App() {
         </div>
 
         <p className="status-text">{status}</p>
+        {alignmentResult && (
+          <div className="alignment-info">
+            <h3 className="results-title">Alignment Result</h3>
+            <p>Method: {alignmentResult.type || "(unknown)"}</p>
+            {alignmentResult.rotation_radians && Array.isArray(alignmentResult.rotation_radians) && (
+              <p>
+                Rotation (deg): {alignmentResult.rotation_radians.map(r => (r * 180 / Math.PI).toFixed(1)).join(" , ")}
+              </p>
+            )}
+            {alignmentResult.chamfer_after != null && (
+              <p>Chamfer after: {alignmentResult.chamfer_after.toFixed(6)}</p>
+            )}
+            <details className="results-details">
+              <summary>View full alignment JSON</summary>
+              <pre className="results-json">{JSON.stringify(alignmentResult, null, 2)}</pre>
+            </details>
+          </div>
+        )}
         
         {result && (
           <div className="results-box">

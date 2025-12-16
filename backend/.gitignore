@@ -3,3 +3,7 @@ __pycache__
 .env
 .env.*
 .generated_models
+
+
+# venv
+venv/

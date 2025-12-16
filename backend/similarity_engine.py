@@ -2,7 +2,7 @@ from io import BytesIO
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
-from trimesh.registration import icp
+from utils import safe_sample
 
 # -------------------------------------------------
 # Default Metric Weights (sum = 1.0)
@@ -63,107 +63,6 @@ def validate_sharpness(sharpness):
         raise ValueError("All sharpness values must be numeric.")
 
     return numeric_sharpness
-
-# -------------------------------------------------
-# PCA canonicalization
-# -------------------------------------------------
-def canonicalize_points(points):
-    centroid = points.mean(axis=0)
-    centered = points - centroid
-
-    cov = np.cov(centered.T)
-    eigenvalues, eigenvectors = np.linalg.eigh(cov)
-
-    idx = np.argsort(eigenvalues)[::-1]
-    eigenvectors = eigenvectors[:, idx]
-
-    if np.linalg.det(eigenvectors) < 0:
-        eigenvectors[:, 2] *= -1
-
-    aligned = centered @ eigenvectors
-
-    for i in range(3):
-        max_idx = np.argmax(np.abs(aligned[:, i]))
-        if aligned[max_idx, i] < 0:
-            aligned[:, i] *= -1
-
-    return aligned
-
-def safe_sample(mesh, n_points, diag, label="mesh"):
-    # If this is a Scene, merge to a single mesh
-    if isinstance(mesh, trimesh.Scene):
-        # dump() returns a list of meshes
-        mesh_list = mesh.dump()
-        
-        # If list is empty, raise error
-        if not mesh_list:
-            raise ValueError(f"{label} scene is empty, cannot sample.")
-        
-        # If single mesh in list, use it directly
-        if len(mesh_list) == 1:
-            mesh = mesh_list[0]
-        else:
-            # Multiple meshes - concatenate them
-            mesh = trimesh.util.concatenate(mesh_list)
-
-    # Check if mesh is valid for surface sampling
-    if mesh.is_empty or mesh.faces is None or len(mesh.faces) == 0 or mesh.area < 1e-9:
-        raise ValueError(f"{label} has no valid faces or zero area, cannot sample surface.")
-
-    return mesh.sample(n_points) / diag
-
-# -------------------------------------------------
-# PCA + Reflection Search + ICP Alignment
-# -------------------------------------------------
-def align_meshes(gt_mesh, comp_mesh):
-    diag = np.linalg.norm(gt_mesh.bounds[1] - gt_mesh.bounds[0])
-    if diag == 0:
-        diag = 1.0
-
-    np.random.seed(42)
-    PA = safe_sample(gt_mesh, 20000, diag, label="Preview A mesh")
-
-    np.random.seed(42)
-    PB = safe_sample(comp_mesh, 20000, diag, label="Preview B mesh")
-
-    PA_canon = canonicalize_points(PA)
-
-    reflect_ops = [
-        np.array([1,1,1]),
-        np.array([-1,1,1]),
-        np.array([1,-1,1]),
-        np.array([1,1,-1]),
-        np.array([-1,-1,1]),
-        np.array([-1,1,-1]),
-        np.array([1,-1,-1]),
-        np.array([-1,-1,-1])
-    ]
-
-    PB_centered = PB - PB.mean(0)
-
-    best_dist = float("inf")
-    best = None
-
-    for refl in reflect_ops:
-        PB_test = PB_centered * refl
-        PB_test = canonicalize_points(PB_test)
-        d = np.mean(np.linalg.norm(PB_test - PA_canon, axis=1))
-
-        if d < best_dist:
-            best_dist = d
-            best = PB_test
-
-    PB_best = best
-
-    try:
-        T, _, _ = icp(PB_best, PA_canon, max_iterations=5000)
-        PB_aligned = trimesh.transform_points(PB_best, T)
-        warn = None
-    except:
-        PB_aligned = PB_best
-        warn = "ICP_WARN"
-
-    return PA_canon, PB_aligned, warn
 
 
 # -------------------------------------------------
@@ -265,11 +164,64 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
     meshA = trimesh.load(BytesIO(bytesA), file_type="stl")
     meshB = trimesh.load(BytesIO(bytesB), file_type="stl")
 
-    A, B, warn = align_meshes(meshA, meshB)
+    # Try to reuse the alignment pipeline in alignment_engine (which may produce
+    # a centroid+rotation+ICP-refined transform). Import at runtime to avoid
+    # circular imports (alignment_engine imports chamfer helpers from this module).
+    warn = None
+    aligned_used = False
+    meshB_aligned = None
+    try:
+        from alignment_engine import compute_alignment
 
-    chamfer, max_dist = chamfer_distance(A, B)
+        # compute_alignment expects trimesh meshes and returns a dict with
+        # 'transform' (4x4 list) among other diagnostics.
+        align_res = compute_alignment(meshA, meshB)
+        transform = np.array(align_res.get("transform"), dtype=float)
 
-    metrics = compute_mesh_metrics(meshA, meshB, chamfer, max_dist, user_sharpness)
+        # apply transform to a copy of meshB for sampling / chamfer
+        meshB_aligned = meshB.copy()
+        try:
+            meshB_aligned.apply_transform(transform)
+        except Exception:
+            # if transform shape/orientation unexpected, try transpose
+            try:
+                meshB_aligned.apply_transform(transform.T)
+            except Exception:
+                # fallback: don't apply transform
+                meshB_aligned = meshB.copy()
+
+        # sample points from meshA and aligned meshB
+        diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
+        if diag == 0:
+            diag = 1.0
+
+        np.random.seed(42)
+        PA = safe_sample(meshA, 20000, diag, label="Preview A mesh")
+        np.random.seed(42)
+        PB = safe_sample(meshB_aligned, 20000, diag, label="Preview B mesh (aligned)")
+
+        chamfer, max_dist = chamfer_distance(PA, PB)
+        # carry through any useful diagnostics
+        warn = align_res.get("warn", None)
+        aligned_used = True
+    except Exception as exc:
+        # If alignment_engine is unavailable or fails, fall back to computing
+        # chamfer on the raw (unaligned) meshes so the API still responds.
+        warn = f"alignment_engine error: {exc}"
+        diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
+        if diag == 0:
+            diag = 1.0
+        np.random.seed(42)
+        PA = safe_sample(meshA, 20000, diag, label="Preview A mesh")
+        np.random.seed(42)
+        PB = safe_sample(meshB, 20000, diag, label="Preview B mesh (raw)")
+        chamfer, max_dist = chamfer_distance(PA, PB)
+        meshB_aligned = None
+
+    # Use the aligned mesh for metric computation when available so bbox/area/volume
+    # reflect the same transformed geometry used for chamfer scoring.
+    comp_for_metrics = meshB_aligned if aligned_used and meshB_aligned is not None else meshB
+    metrics = compute_mesh_metrics(meshA, comp_for_metrics, chamfer, max_dist, user_sharpness)
 
     # ---------------------------------
     # Weight selection (user / default)
@@ -296,9 +248,10 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
         W["maxdist"] * metrics["S_maxdist"]
     )
 
-    return {
+    result = {
         "overall_similarity": overall,
         "warn": warn,
+        "alignment_used": aligned_used,
         "weights_used": W,
         "chamfer": chamfer,
         "max_dist": max_dist,
@@ -310,3 +263,14 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
             "maxdist_similarity": metrics["S_maxdist"],
         }
     }
+
+    # If alignment returned diagnostics, merge a few into the response for visibility
+    try:
+        if 'align_res' in locals() and isinstance(align_res, dict):
+            for k in ('transform', 'centroidA', 'centroidB', 'chamfer_after', 'maxdist_after', 'rotation_radians'):
+                if k in align_res:
+                    result[k] = align_res[k]
+    except Exception:
+        pass
+
+    return result
