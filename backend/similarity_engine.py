@@ -2,7 +2,7 @@ from io import BytesIO
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
-from trimesh.registration import icp
+from utils import safe_sample
 
 # -------------------------------------------------
 # Default Metric Weights (sum = 1.0)
@@ -64,107 +64,6 @@ def validate_sharpness(sharpness):
 
     return numeric_sharpness
 
-# -------------------------------------------------
-# PCA canonicalization
-# -------------------------------------------------
-def canonicalize_points(points):
-    centroid = points.mean(axis=0)
-    centered = points - centroid
-
-    cov = np.cov(centered.T)
-    eigenvalues, eigenvectors = np.linalg.eigh(cov)
-
-    idx = np.argsort(eigenvalues)[::-1]
-    eigenvectors = eigenvectors[:, idx]
-
-    if np.linalg.det(eigenvectors) < 0:
-        eigenvectors[:, 2] *= -1
-
-    aligned = centered @ eigenvectors
-
-    for i in range(3):
-        max_idx = np.argmax(np.abs(aligned[:, i]))
-        if aligned[max_idx, i] < 0:
-            aligned[:, i] *= -1
-
-    return aligned
-
-def safe_sample(mesh, n_points, diag, label="mesh"):
-    # If this is a Scene, merge to a single mesh
-    if isinstance(mesh, trimesh.Scene):
-        # dump() returns a list of meshes
-        mesh_list = mesh.dump()
-        
-        # If list is empty, raise error
-        if not mesh_list:
-            raise ValueError(f"{label} scene is empty, cannot sample.")
-        
-        # If single mesh in list, use it directly
-        if len(mesh_list) == 1:
-            mesh = mesh_list[0]
-        else:
-            # Multiple meshes - concatenate them
-            mesh = trimesh.util.concatenate(mesh_list)
-
-    # Check if mesh is valid for surface sampling
-    if mesh.is_empty or mesh.faces is None or len(mesh.faces) == 0 or mesh.area < 1e-9:
-        raise ValueError(f"{label} has no valid faces or zero area, cannot sample surface.")
-
-    return mesh.sample(n_points) / diag
-
-# -------------------------------------------------
-# PCA + Reflection Search + ICP Alignment
-# -------------------------------------------------
-def align_meshes(gt_mesh, comp_mesh):
-    diag = np.linalg.norm(gt_mesh.bounds[1] - gt_mesh.bounds[0])
-    if diag == 0:
-        diag = 1.0
-
-    np.random.seed(42)
-    PA = safe_sample(gt_mesh, 20000, diag, label="Preview A mesh")
-
-    np.random.seed(42)
-    PB = safe_sample(comp_mesh, 20000, diag, label="Preview B mesh")
-
-    PA_canon = canonicalize_points(PA)
-
-    reflect_ops = [
-        np.array([1,1,1]),
-        np.array([-1,1,1]),
-        np.array([1,-1,1]),
-        np.array([1,1,-1]),
-        np.array([-1,-1,1]),
-        np.array([-1,1,-1]),
-        np.array([1,-1,-1]),
-        np.array([-1,-1,-1])
-    ]
-
-    PB_centered = PB - PB.mean(0)
-
-    best_dist = float("inf")
-    best = None
-
-    for refl in reflect_ops:
-        PB_test = PB_centered * refl
-        PB_test = canonicalize_points(PB_test)
-        d = np.mean(np.linalg.norm(PB_test - PA_canon, axis=1))
-
-        if d < best_dist:
-            best_dist = d
-            best = PB_test
-
-    PB_best = best
-
-    try:
-        T, _, _ = icp(PB_best, PA_canon, max_iterations=5000)
-        PB_aligned = trimesh.transform_points(PB_best, T)
-        warn = None
-    except:
-        PB_aligned = PB_best
-        warn = "ICP_WARN"
-
-    return PA_canon, PB_aligned, warn
-
 
 # -------------------------------------------------
 # Chamfer Distance
@@ -206,6 +105,18 @@ def similarity_from_relative_diff(diff, cap=1.0):
     return max(0.0, 1.0 - min(diff, cap) / cap)
 
 def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
+    """Compute similarity metrics given two meshes and chamfer/max_dist values.
+    
+    Args:
+        gt_mesh: ground truth mesh
+        comp_mesh: comparison mesh (should be aligned if alignment was performed)
+        chamfer: chamfer distance value (pre-normalized by diagonal)
+        max_dist: max distance value (pre-normalized by diagonal)
+        S: sharpness dict {"chamfer": 10, "maxdist": 10}
+    
+    Returns:
+        dict with similarity scores for each metric
+    """
     # Ensure we have single meshes for metric computation
     gt_mesh = ensure_single_mesh(gt_mesh, "Ground truth")
     comp_mesh = ensure_single_mesh(comp_mesh, "Comparison")
@@ -237,7 +148,6 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
     else:
         bbox_diff = np.linalg.norm(bboxA - bboxB) / (np.linalg.norm(bboxA) + 1e-9)
 
-
     S_chamfer = similarity_exponential(chamfer, S["chamfer"])
     S_volume  = similarity_from_relative_diff(vol_diff)
     S_area    = similarity_from_relative_diff(area_diff)
@@ -262,14 +172,85 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
 # Main Compute Function (FastAPI calls this)
 # -------------------------------------------------
 def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
+    """Compute similarity between two meshes using alignment engine and normalized metrics.
+    
+    Process:
+    1. Load both meshes from bytes
+    2. Compute alignment using alignment_engine.compute_alignment (centroid+rotation+ICP)
+    3. Apply the returned transform to a copy of meshB
+    4. Sample and compute chamfer/max_dist on aligned meshes
+    5. Normalize by scene diagonal for scale-invariance
+    6. Compute bbox/area/volume metrics on aligned geometry
+    7. Return comprehensive diagnostics
+    """
     meshA = trimesh.load(BytesIO(bytesA), file_type="stl")
     meshB = trimesh.load(BytesIO(bytesB), file_type="stl")
 
-    A, B, warn = align_meshes(meshA, meshB)
+    # Compute scene diagonal for normalization (scale-invariant similarity)
+    diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
+    if diag == 0:
+        diag = 1.0
 
-    chamfer, max_dist = chamfer_distance(A, B)
+    # Try to use the alignment engine (centroid+rotation+ICP)
+    warn = None
+    aligned_used = False
+    meshB_aligned = None
+    align_res = None
+    try:
+        from alignment_engine import compute_alignment
 
-    metrics = compute_mesh_metrics(meshA, meshB, chamfer, max_dist, user_sharpness)
+        # compute_alignment expects trimesh meshes and returns a dict with
+        # 'transform' (4x4 list), centroids, rotation, chamfer_after, etc.
+        align_res = compute_alignment(meshA, meshB)
+        transform = np.array(align_res.get("transform"), dtype=float)
+
+        # Apply transform to a copy of meshB for sampling / chamfer / metrics
+        meshB_aligned = meshB.copy()
+        try:
+            meshB_aligned.apply_transform(transform)
+        except Exception:
+            # if transform shape/orientation unexpected, try transpose
+            try:
+                meshB_aligned.apply_transform(transform.T)
+            except Exception:
+                # fallback: don't apply transform, use raw meshB
+                meshB_aligned = meshB.copy()
+
+        # Sample points from meshA and aligned meshB using correct safe_sample signature
+        np.random.seed(42)
+        PA = safe_sample(meshA, 20000, label="Preview A mesh")
+        np.random.seed(42)
+        PB = safe_sample(meshB_aligned, 20000, label="Preview B mesh (aligned)")
+
+        chamfer, max_dist = chamfer_distance(PA, PB)
+        warn = align_res.get("warn", None)
+        aligned_used = True
+    except Exception as exc:
+        # If alignment_engine is unavailable or fails, fall back to computing
+        # chamfer on the raw (unaligned) meshes so the API still responds.
+        warn = f"alignment_engine error: {exc}"
+        np.random.seed(42)
+        PA = safe_sample(meshA, 20000, label="Preview A mesh")
+        np.random.seed(42)
+        PB = safe_sample(meshB, 20000, label="Preview B mesh (raw)")
+        chamfer, max_dist = chamfer_distance(PA, PB)
+        meshB_aligned = None
+
+    # Normalize chamfer and max_dist by scene diagonal (scale-invariant)
+    chamfer_normalized = float(chamfer) / float(diag)
+    max_dist_normalized = float(max_dist) / float(diag)
+
+    # Validate and use sharpness (needed by compute_mesh_metrics)
+    if user_sharpness is None:
+        S = DEFAULT_SHARPNESS  # { chamfer: 10, maxdist: 10 }
+    else:
+        S = validate_sharpness(user_sharpness)
+
+    # Use the aligned mesh for metric computation when available so bbox/area/volume
+    # reflect the same transformed geometry used for chamfer scoring.
+    comp_for_metrics = meshB_aligned if aligned_used and meshB_aligned is not None else meshB
+    # Pass normalized distances into metric scoring so S_chamfer uses a unitless value.
+    metrics = compute_mesh_metrics(meshA, comp_for_metrics, chamfer_normalized, max_dist_normalized, S)
 
     # ---------------------------------
     # Weight selection (user / default)
@@ -278,12 +259,6 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
         W = DEFAULT_WEIGHTS
     else:
         W = validate_weights(user_weights)
-
-    # Validate and use sharpness
-    if user_sharpness is None:
-        S = DEFAULT_SHARPNESS  # { chamfer: 10, maxdist: 10 }
-    else:
-        S = validate_sharpness(user_sharpness) 
     
     # ---------------------------------
     # Weighted final similarity
@@ -296,12 +271,17 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
         W["maxdist"] * metrics["S_maxdist"]
     )
 
-    return {
+    result = {
         "overall_similarity": overall,
         "warn": warn,
+        "alignment_used": aligned_used,
         "weights_used": W,
-        "chamfer": chamfer,
-        "max_dist": max_dist,
+        # keep raw distances for debugging/display, but the metric scoring used
+        # the normalized versions above (see metrics and S_chamfer).
+        "chamfer": float(chamfer),
+        "chamfer_normalized": float(chamfer_normalized),
+        "max_dist": float(max_dist),
+        "max_dist_normalized": float(max_dist_normalized),
         "metrics": {
             "chamfer_similarity": metrics["S_chamfer"],
             "volume_similarity": metrics["S_volume"],
@@ -310,3 +290,15 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
             "maxdist_similarity": metrics["S_maxdist"],
         }
     }
+
+    # If alignment returned diagnostics, merge a few into the response for visibility
+    try:
+        if align_res is not None and isinstance(align_res, dict):
+            for k in ('transform', 'centroidA', 'centroidB', 'chamfer_after', 'maxdist_after', 'rotation_radians'):
+                if k in align_res:
+                    result[k] = align_res[k]
+    except Exception:
+        pass
+
+    return result
+
