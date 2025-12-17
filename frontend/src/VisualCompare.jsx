@@ -89,7 +89,9 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
 
       groupRef.current.position.copy(position);
       groupRef.current.quaternion.copy(quaternion);
-      groupRef.current.scale.copy(scale);
+      // Keep scale as (1, 1, 1) — alignment is rigid (translation + rotation only)
+      // Do NOT apply decomposed scale to retain original mesh size
+      groupRef.current.scale.set(1, 1, 1);
 
       if (centroid) {
         const v = new THREE.Vector3(centroid[0], centroid[1], centroid[2]);

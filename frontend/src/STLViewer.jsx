@@ -93,7 +93,9 @@ function Model({ url, matrix, surfaceCentroid }) {
 
       groupRef.current.position.copy(pos);
       groupRef.current.quaternion.copy(quat);
-      groupRef.current.scale.copy(scale);
+      // Keep scale as (1, 1, 1) — alignment is rigid (translation + rotation only)
+      // Do NOT apply decomposed scale to retain original mesh size
+      groupRef.current.scale.set(1, 1, 1);
 
       const sourceCent = Array.isArray(surfaceCentroid) ? surfaceCentroid : vertexCentroid;
       if (sourceCent) {

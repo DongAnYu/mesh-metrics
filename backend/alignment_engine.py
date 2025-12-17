@@ -85,8 +85,7 @@ def compute_alignment(meshA, meshB):
 
     # OPTIMIZED SAMPLING STRATEGY
     # Use fewer points for rotation/grid search, more for ICP refinement
-    diag_A = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
-
+    # Sampling counts chosen by mesh area (not by scaling)
     if meshA.area > 10000:
         SAMPLE_GRID = 5000
         SAMPLE_ICP = 15000
