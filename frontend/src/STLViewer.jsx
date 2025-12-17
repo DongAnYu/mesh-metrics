@@ -1,4 +1,4 @@
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { useLoader } from "@react-three/fiber";
 import * as THREE from "three";
@@ -35,6 +35,7 @@ export default function STLViewer({ file, matrix, centroid: surfaceCentroid }) {
 function Model({ url, matrix, surfaceCentroid }) {
   const groupRef = useRef();
   const meshRef = useRef();
+  const { camera } = useThree();
   const geometry = useLoader(STLLoader, url);
 
   const [vertexCentroid, setVertexCentroid] = useState(null);
@@ -55,6 +56,19 @@ function Model({ url, matrix, surfaceCentroid }) {
     cx /= n; cy /= n; cz /= n;
     setVertexCentroid([cx, cy, cz]);
   }, [geometry]);
+
+  // Auto-frame camera to fit geometry
+  useEffect(() => {
+    if (!geometry || !camera) return;
+    
+    geometry.computeBoundingSphere();
+    if (!geometry.boundingSphere) return;
+
+    const sphere = geometry.boundingSphere;
+    const distance = sphere.radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    camera.position.z = sphere.center.z + distance * 1.5;
+    camera.lookAt(sphere.center);
+  }, [geometry, camera]);
 
   // Apply transform to group and compute transformed centroid (use surfaceCentroid when provided)
   useEffect(() => {

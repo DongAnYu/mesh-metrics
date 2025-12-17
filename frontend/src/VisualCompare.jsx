@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Canvas, useLoader } from "@react-three/fiber";
+import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
@@ -30,6 +30,7 @@ const COLOR_SCHEMES = {
 function Model({ url, color, opacity, animating, phase, matrix }) {
   const groupRef = useRef();
   const meshRef = useRef();
+  const { camera } = useThree();
   const geometry = useLoader(STLLoader, url);
   const [time, setTime] = useState(0);
   const [centroid, setCentroid] = useState(null);
@@ -103,6 +104,18 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
       console.error("Error applying transform:", error);
     }
   }, [matrix, centroid]);
+
+  // Auto-frame camera to fit geometry
+  useEffect(() => {
+    if (!geometry || !camera) return;
+    geometry.computeBoundingSphere();
+    if (!geometry.boundingSphere) return;
+    const sphere = geometry.boundingSphere;
+    const cameraFOV = camera.fov * Math.PI / 180;
+    const distance = sphere.radius / Math.tan(cameraFOV / 2);
+    camera.position.z = distance;
+    camera.lookAt(sphere.center);
+  }, [geometry, camera]);
 
   useEffect(() => {
     if (!animating) return;
