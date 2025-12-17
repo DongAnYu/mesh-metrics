@@ -9,7 +9,7 @@ export async function computeSimilarity(fileA, fileB, weights, sharpness) {
   form.append("sharpness", JSON.stringify(sharpness));
 
 
-  const res = await fetch(BACKEND_URL_DEV, {
+  const res = await fetch(BACKEND_URL_PRO, {
     method: "POST",
     body: form
   });
@@ -30,7 +30,7 @@ export async function computeAlignment(fileA, fileB) {
   form.append("fileA", fileA);
   form.append("fileB", fileB);
 
-  const res = await fetch(BACKEND_ALIGN_DEV, {
+  const res = await fetch(BACKEND_ALIGN_PRO, {
     method: "POST",
     body: form,
   });
