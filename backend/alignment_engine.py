@@ -134,7 +134,7 @@ def compute_alignment(meshA, meshB):
         best_a = (0.0, 0.0, 0.0)
 
         # Level 1: Coarse (every 45°)
-        angles_45 = np.linspace(0, 2*np.pi, 8, endpoint=False)
+        angles_45 = np.linspace(0, 2*np.pi, 4, endpoint=False)
         for rx in angles_45:
             for ry in angles_45:
                 for rz in angles_45:
@@ -146,7 +146,7 @@ def compute_alignment(meshA, meshB):
 
         # Level 2: Medium around best (every 10° in ±30° range)
         rx0, ry0, rz0 = best_a
-        angles_10 = np.deg2rad(np.arange(-30, 35, 10))
+        angles_10 = np.deg2rad(np.arange(-30, 35, 20))
         for drx in angles_10:
             for dry in angles_10:
                 for drz in angles_10:
@@ -159,7 +159,7 @@ def compute_alignment(meshA, meshB):
 
         # Level 3: Fine around best (every 2° in ±10° range)
         rx0, ry0, rz0 = best_a
-        angles_2 = np.deg2rad(np.arange(-10, 12, 2))
+        angles_2 = np.deg2rad(np.arange(-10, 12, 4))
         for drx in angles_2:
             for dry in angles_2:
                 for drz in angles_2:
@@ -185,8 +185,8 @@ def compute_alignment(meshA, meshB):
     # Try several random initial rotations (around centroid_A) and run ICP from each start.
     # Keep the best transform that yields lowest chamfer distance.
     try:
-        NUM_ICP_STARTS = 8
-        ICP_MAX_ITER = 100
+        NUM_ICP_STARTS = 5
+        ICP_MAX_ITER = 50
 
         rng = np.random.default_rng(12345)
 
