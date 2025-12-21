@@ -55,6 +55,7 @@ function Model({ url, matrix, surfaceCentroid }) {
     }
     cx /= n; cy /= n; cz /= n;
     setVertexCentroid([cx, cy, cz]);
+    console.log("using fallback centroid")
   }, [geometry]);
 
   // Auto-frame camera to fit geometry
@@ -154,7 +155,7 @@ function Model({ url, matrix, surfaceCentroid }) {
       {/* Transformed centroid marker (world after matrix) - render outside the transformed group */}
       {transformedCentroid && (
         <mesh position={transformedCentroid}>
-          <sphereGeometry args={[markerSize * 1.2, 12, 12]} />
+          <sphereGeometry args={[markerSize , 12, 12]} />
           <meshStandardMaterial color="#10b981" />
         </mesh>
       )}

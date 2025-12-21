@@ -3,31 +3,13 @@ import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
 from utils import safe_sample
-
-# -------------------------------------------------
-# Default Metric Weights (sum = 1.0)
-# -------------------------------------------------
-DEFAULT_WEIGHTS = {
-    "chamfer": 0.50,
-    "volume": 0.25,
-    "area":   0.15,
-    "bbox":   0.05,
-    "maxdist":0.05,
-}
-
-# -------------------------------------------------
-# Default Sharpness
-# -------------------------------------------------
-DEFAULT_SHARPNESS = {
-    "chamfer": 10,
-    "maxdist": 10
-}
+import config
 
 # -------------------------------------------------
 # Validate incoming user weight dictionary 
 # -------------------------------------------------
 def validate_weights(weights):
-    required = list(DEFAULT_WEIGHTS.keys())
+    required = list(config.DEFAULT_WEIGHTS.keys())
 
     # ensure all keys exist
     for k in required:
@@ -42,7 +24,7 @@ def validate_weights(weights):
 
     # ensure sum = 1.0 (with epsilon tolerance)
     total = sum(numeric_weights.values())
-    if abs(total - 1.0) > 1e-6:
+    if abs(total - 1.0) > config.WEIGHT_SUM_TOLERANCE:
         raise ValueError(f"Weight sum must be exactly 1.0, but got {total}.")
 
     return numeric_weights
@@ -51,7 +33,7 @@ def validate_weights(weights):
 # Validate incoming user sharpness dictionary 
 # -------------------------------------------------
 def validate_sharpness(sharpness):
-    required = ["chamfer", "maxdist"]
+    required = list(config.DEFAULT_SHARPNESS.keys())
 
     for k in required:
         if k not in sharpness:
@@ -101,7 +83,9 @@ def ensure_single_mesh(mesh_obj, label="mesh"):
 def similarity_exponential(value, sharpness):
     return float(np.exp(-value * sharpness))
 
-def similarity_from_relative_diff(diff, cap=1.0):
+def similarity_from_relative_diff(diff, cap=None):
+    if cap is None:
+        cap = config.RELATIVE_DIFF_CAP
     return max(0.0, 1.0 - min(diff, cap) / cap)
 
 def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
@@ -131,22 +115,22 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
     bboxB = comp_mesh.extents
 
     # Volume difference (avoid 0 division)
-    if max(volA, volB) < 1e-9:
+    if max(volA, volB) < config.MIN_VOLUME:
         vol_diff = 0.0
     else:
         vol_diff = abs(volA - volB) / max(volA, volB)
 
     # Area difference (avoid 0 division)
-    if max(areaA, areaB) < 1e-9:
+    if max(areaA, areaB) < config.MIN_TOTAL_AREA:
         area_diff = 0.0
     else:
         area_diff = abs(areaA - areaB) / max(areaA, areaB)
 
     # Bounding-box difference (avoid invalid norm)
-    if np.linalg.norm(bboxA) < 1e-9:
+    if np.linalg.norm(bboxA) < config.MIN_BBOX_NORM:
         bbox_diff = 0.0
     else:
-        bbox_diff = np.linalg.norm(bboxA - bboxB) / (np.linalg.norm(bboxA) + 1e-9)
+        bbox_diff = np.linalg.norm(bboxA - bboxB) / (np.linalg.norm(bboxA) + config.MIN_BBOX_NORM)
 
     S_chamfer = similarity_exponential(chamfer, S["chamfer"])
     S_volume  = similarity_from_relative_diff(vol_diff)
@@ -188,7 +172,7 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
 
     # Compute scene diagonal for normalization (scale-invariant similarity)
     diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
-    if diag == 0:
+    if diag < config.MIN_DIAGONAL:
         diag = 1.0
 
     # Try to use the alignment engine (centroid+rotation+ICP)
@@ -201,7 +185,7 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
 
         # compute_alignment expects trimesh meshes and returns a dict with
         # 'transform' (4x4 list), centroids, rotation, chamfer_after, etc.
-        align_res = compute_alignment(meshA, meshB)
+        align_res = compute_alignment(meshA, meshB, user_sharpness)
         transform = np.array(align_res.get("transform"), dtype=float)
 
         # Apply transform to a copy of meshB for sampling / chamfer / metrics
@@ -217,10 +201,10 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
                 meshB_aligned = meshB.copy()
 
         # Sample points from meshA and aligned meshB using correct safe_sample signature
-        np.random.seed(42)
-        PA = safe_sample(meshA, 20000, label="Preview A mesh")
-        np.random.seed(42)
-        PB = safe_sample(meshB_aligned, 20000, label="Preview B mesh (aligned)")
+        np.random.seed(config.EVAL_RANDOM_SEED)
+        PA = safe_sample(meshA, config.EVAL_SAMPLE_COUNT, label="Preview A mesh")
+        np.random.seed(config.EVAL_RANDOM_SEED)
+        PB = safe_sample(meshB_aligned, config.EVAL_SAMPLE_COUNT, label="Preview B mesh (aligned)")
 
         chamfer, max_dist = chamfer_distance(PA, PB)
         warn = align_res.get("warn", None)
@@ -229,10 +213,10 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
         # If alignment_engine is unavailable or fails, fall back to computing
         # chamfer on the raw (unaligned) meshes so the API still responds.
         warn = f"alignment_engine error: {exc}"
-        np.random.seed(42)
-        PA = safe_sample(meshA, 20000, label="Preview A mesh")
-        np.random.seed(42)
-        PB = safe_sample(meshB, 20000, label="Preview B mesh (raw)")
+        np.random.seed(config.EVAL_RANDOM_SEED)
+        PA = safe_sample(meshA, config.EVAL_SAMPLE_COUNT, label="Preview A mesh")
+        np.random.seed(config.EVAL_RANDOM_SEED)
+        PB = safe_sample(meshB, config.EVAL_SAMPLE_COUNT, label="Preview B mesh (raw)")
         chamfer, max_dist = chamfer_distance(PA, PB)
         meshB_aligned = None
 
@@ -242,7 +226,7 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
 
     # Validate and use sharpness (needed by compute_mesh_metrics)
     if user_sharpness is None:
-        S = DEFAULT_SHARPNESS  # { chamfer: 10, maxdist: 10 }
+        S = config.DEFAULT_SHARPNESS
     else:
         S = validate_sharpness(user_sharpness)
 
@@ -256,7 +240,7 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
     # Weight selection (user / default)
     # ---------------------------------
     if user_weights is None:
-        W = DEFAULT_WEIGHTS
+        W = config.DEFAULT_WEIGHTS
     else:
         W = validate_weights(user_weights)
     
@@ -301,4 +285,3 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
         pass
 
     return result
-

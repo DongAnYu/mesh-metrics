@@ -2,11 +2,12 @@ from io import BytesIO
 import numpy as np
 import trimesh
 from trimesh.registration import icp
-from similarity_engine import chamfer_distance
+from similarity_engine import chamfer_distance, similarity_exponential
 from trimesh.transformations import euler_matrix, euler_from_matrix
 from scipy.spatial import cKDTree
 from utils import safe_sample
 import math
+import config
 
 def ensure_single_mesh(mesh_obj, label="mesh"):
     if isinstance(mesh_obj, trimesh.Scene):
@@ -35,17 +36,20 @@ def surface_centroid(mesh):
     tri_areas = np.linalg.norm(cross, axis=1) * 0.5
 
     total_area = np.sum(tri_areas)
-    if total_area < 1e-12:
+    if total_area < config.MIN_SURFACE_AREA:
         raise ValueError("Mesh has near-zero surface area")
 
     centroid = np.sum(tri_centroids * tri_areas[:, None], axis=0) / total_area
     return centroid
 
 
-def compute_alignment(meshA, meshB):
+def compute_alignment(meshA, meshB, user_sharpness=None):
     # Ensure single mesh (Scene → Mesh)
     meshA = ensure_single_mesh(meshA, "A")
     meshB = ensure_single_mesh(meshB, "B")
+    
+    # Use user-provided sharpness or default
+    S = user_sharpness if user_sharpness is not None else config.DEFAULT_SHARPNESS
 
     # --- Compute centroids (area-weighted surface centroids) ---
     centroid_A = surface_centroid(meshA)
@@ -66,27 +70,35 @@ def compute_alignment(meshA, meshB):
     meshB_translated = meshB.copy()
     meshB_translated.apply_translation(translation)
 
-    # OPTIMIZED SAMPLING STRATEGY - further reduced for speed
-    if meshA.area > 10000:
-        SAMPLE_GRID = 2500  # Reduced from 5000
-        SAMPLE_ICP = 8000   # Reduced from 15000
-    elif meshA.area > 1000:
-        SAMPLE_GRID = 1500  # Reduced from 3000
-        SAMPLE_ICP = 5000   # Reduced from 10000
+    # Compute scene diagonal for normalization (scale-invariant similarity)
+    diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])
+    if diag < config.MIN_DIAGONAL:
+        diag = 1.0
+
+    # ADAPTIVE SAMPLING STRATEGY based on mesh area
+    if meshA.area > config.AREA_THRESHOLD_LARGE:
+        print(f"Large mesh (area={meshA.area:.2f})")
+        SAMPLE_GRID = config.SAMPLE_GRID_LARGE
+        SAMPLE_ICP = config.SAMPLE_ICP_LARGE
+    elif meshA.area > config.AREA_THRESHOLD_MEDIUM:
+        print(f"Medium mesh (area={meshA.area:.2f})")
+        SAMPLE_GRID = config.SAMPLE_GRID_MEDIUM
+        SAMPLE_ICP = config.SAMPLE_ICP_MEDIUM
     else:
-        SAMPLE_GRID = 1000  # Reduced from 2000
-        SAMPLE_ICP = 3000   # Reduced from 8000
+        print(f"Small mesh (area={meshA.area:.2f})")
+        SAMPLE_GRID = config.SAMPLE_GRID_SMALL
+        SAMPLE_ICP = config.SAMPLE_ICP_SMALL
 
     try:
-        PA_grid = safe_sample(meshA, min(SAMPLE_GRID, int(max(100, meshA.area))), label="PA_grid")
-        PB_grid = safe_sample(meshB_translated, min(SAMPLE_GRID, int(max(100, meshB_translated.area))), label="PB_grid")
+        PA_grid = safe_sample(meshA, min(SAMPLE_GRID, int(max(config.MIN_SAMPLE_COUNT, meshA.area))), label="PA_grid")
+        PB_grid = safe_sample(meshB_translated, min(SAMPLE_GRID, int(max(config.MIN_SAMPLE_COUNT, meshB_translated.area))), label="PB_grid")
     except Exception:
         PA_grid = meshA.vertices
         PB_grid = meshB_translated.vertices
 
     try:
-        PA_icp = safe_sample(meshA, min(SAMPLE_ICP, int(max(100, meshA.area))), label="PA_icp")
-        PB_icp = safe_sample(meshB_translated, min(SAMPLE_ICP, int(max(100, meshB_translated.area))), label="PB_icp")
+        PA_icp = safe_sample(meshA, min(SAMPLE_ICP, int(max(config.MIN_SAMPLE_COUNT, meshA.area))), label="PA_icp")
+        PB_icp = safe_sample(meshB_translated, min(SAMPLE_ICP, int(max(config.MIN_SAMPLE_COUNT, meshB_translated.area))), label="PB_icp")
     except Exception:
         PA_icp = meshA.vertices
         PB_icp = meshB_translated.vertices
@@ -130,7 +142,7 @@ def compute_alignment(meshA, meshB):
         best_a = (0.0, 0.0, 0.0)
 
         # Level 1: Coarse (every 90° - 64 evaluations, one-way chamfer)
-        angles_90 = np.linspace(0, 2*np.pi, 4, endpoint=False)
+        angles_90 = np.linspace(0, 2*np.pi, config.ROTATION_COARSE_STEPS, endpoint=False)
         for rx in angles_90:
             for ry in angles_90:
                 for rz in angles_90:
@@ -142,7 +154,9 @@ def compute_alignment(meshA, meshB):
 
         # Level 2: Medium around best (every 20° in ±40° range - 64 evaluations, one-way)
         rx0, ry0, rz0 = best_a
-        angles_20 = np.deg2rad(np.arange(-40, 45, 20))
+        angles_20 = np.deg2rad(np.arange(-config.ROTATION_MEDIUM_RANGE_DEG, 
+                                          config.ROTATION_MEDIUM_RANGE_DEG + config.ROTATION_MEDIUM_STEP_DEG, 
+                                          config.ROTATION_MEDIUM_STEP_DEG))
         for drx in angles_20:
             for dry in angles_20:
                 for drz in angles_20:
@@ -155,7 +169,9 @@ def compute_alignment(meshA, meshB):
 
         # Level 3: Fine around best (every 5° in ±15° range - 49 evaluations, one-way)
         rx0, ry0, rz0 = best_a
-        angles_5 = np.deg2rad(np.arange(-15, 20, 5))
+        angles_5 = np.deg2rad(np.arange(-config.ROTATION_FINE_RANGE_DEG, 
+                                         config.ROTATION_FINE_RANGE_DEG + config.ROTATION_FINE_STEP_DEG, 
+                                         config.ROTATION_FINE_STEP_DEG))
         for drx in angles_5:
             for dry in angles_5:
                 for drz in angles_5:
@@ -174,22 +190,20 @@ def compute_alignment(meshA, meshB):
 
     # Run optimized rotation search (177 fast evaluations + 1 full chamfer)
     best_chamfer, best_transform, best_angles, best_max = adaptive_rotation_search(T)
+    print("best_chamfer_before_icp", best_chamfer)
 
-    # --- Multi-start ICP refinement (fewer starts, faster convergence) ---
+    # --- Multi-start ICP refinement with consistent evaluation methodology ---
     try:
-        NUM_ICP_STARTS = 3  # Reduced from 5 (rotation search is already good)
-        ICP_MAX_ITER = 30   # Reduced from 50 (usually converges faster)
-
-        rng = np.random.default_rng(12345)
+        rng = np.random.default_rng(config.ICP_RANDOM_SEED)
 
         PA_points = PA_icp
         PB_points = PB_icp
 
-        best_icp_chamfer = best_chamfer
-        best_icp_max = best_max
-        best_icp_transform = best_transform
+        # Store all candidate transforms for final evaluation
+        candidate_transforms = [("no-ICP", best_transform)]
 
-        for i in range(NUM_ICP_STARTS):
+        # Run ICP from multiple random starts
+        for i in range(config.NUM_ICP_STARTS):
             # Random Euler angles
             rx = rng.uniform(0.0, 2 * math.pi)
             ry = rng.uniform(0.0, 2 * math.pi)
@@ -204,30 +218,68 @@ def compute_alignment(meshA, meshB):
             PB_init = (PB_points @ R_about_init[:3, :3].T) + R_about_init[:3, 3]
 
             try:
-                T_icp, _, _ = icp(PB_init, PA_points, max_iterations=ICP_MAX_ITER)
+                T_icp, _, _ = icp(PB_init, PA_points, max_iterations=config.ICP_MAX_ITERATIONS)
             except Exception:
                 continue
 
             combined = T_icp @ R_about_init @ T
-            PB_final = (PB_points @ (T_icp @ R_about_init)[:3, :3].T) + (T_icp @ R_about_init)[:3, 3]
+            candidate_transforms.append((f"ICP-{i}", combined))
 
-            d_icp, m_icp = chamfer_distance(PA_points, PB_final)
-            if d_icp < best_icp_chamfer:
-                best_icp_chamfer = d_icp
-                best_icp_max = m_icp
-                best_icp_transform = combined
+        # --- CONSISTENT EVALUATION: Test all candidates the same way ---
+        # Use same seed for all evaluations to match frontend behavior
+        np.random.seed(config.EVAL_RANDOM_SEED)
+        PA_eval = safe_sample(meshA, config.EVAL_SAMPLE_COUNT, label="PA_eval")
+        
+        best_candidate_name = None
+        best_candidate_transform = None
+        best_candidate_chamfer = float('inf')
+        best_candidate_max = float('inf')
+        best_candidate_similarity = -float('inf')
 
-        # Adopt ICP results if better
-        if best_icp_chamfer < best_chamfer:
-            best_chamfer = best_icp_chamfer
-            best_max = best_icp_max
-            best_transform = best_icp_transform
-            try:
-                rot_euler = euler_from_matrix(best_transform, axes='sxyz')
-                best_angles = (float(rot_euler[0]), float(rot_euler[1]), float(rot_euler[2]))
-            except Exception:
-                pass
-    except Exception:
+        for name, transform in candidate_transforms:
+            # 1. Apply transform to meshB
+            meshB_transformed = meshB.copy()
+            meshB_transformed.apply_transform(transform)
+            
+            # 2. Resample points (same count + seed as frontend)
+            np.random.seed(config.EVAL_RANDOM_SEED)
+            PB_eval = safe_sample(meshB_transformed, config.EVAL_SAMPLE_COUNT, label=f"PB_eval_{name}")
+            
+            # 3. Compute chamfer (bi-directional)
+            chamfer_eval, max_eval = chamfer_distance(PA_eval, PB_eval)
+            
+            # 4. Normalize by diagonal
+            chamfer_normalized = float(chamfer_eval) / float(diag)
+            max_normalized = float(max_eval) / float(diag)
+            
+            # 5. Convert → similarity_exponential
+            similarity_score = similarity_exponential(chamfer_normalized, S["chamfer"])
+            
+            print(f"Candidate {name}: chamfer={chamfer_eval:.6f}, similarity={similarity_score:.6f}")
+            
+            # Pick the transform with the higher similarity
+            if similarity_score > best_candidate_similarity:
+                best_candidate_name = name
+                best_candidate_transform = transform
+                best_candidate_chamfer = chamfer_eval
+                best_candidate_max = max_eval
+                best_candidate_similarity = similarity_score
+
+        print(f"Winner: {best_candidate_name} with similarity={best_candidate_similarity:.6f}")
+        
+        # Adopt the best candidate
+        best_chamfer = best_candidate_chamfer
+        best_max = best_candidate_max
+        best_transform = best_candidate_transform
+        
+        try:
+            rot_euler = euler_from_matrix(best_transform, axes='sxyz')
+            best_angles = (float(rot_euler[0]), float(rot_euler[1]), float(rot_euler[2]))
+        except Exception:
+            pass
+            
+    except Exception as e:
+        print(f"ICP refinement failed: {e}")
         pass
 
     result = {

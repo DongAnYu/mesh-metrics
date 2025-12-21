@@ -27,13 +27,13 @@ const COLOR_SCHEMES = {
 };
 
 
-function Model({ url, color, opacity, animating, phase, matrix }) {
+function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
   const groupRef = useRef();
   const meshRef = useRef();
   const { camera } = useThree();
   const geometry = useLoader(STLLoader, url);
   const [time, setTime] = useState(0);
-  const [centroid, setCentroid] = useState(null);
+  // const [centroid, setCentroid] = useState(null);
   const [transformedCentroid, setTransformedCentroid] = useState(null);
 
   // Convert a nested row-major 4x4 matrix to column-major flat array
@@ -50,20 +50,20 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
   }
 
   // Compute centroid from geometry
-  useEffect(() => {
-    if (!geometry || !geometry.attributes || !geometry.attributes.position) return;
-    const posArr = geometry.attributes.position.array;
-    const n = posArr.length / 3;
-    if (n === 0) return;
-    let cx = 0, cy = 0, cz = 0;
-    for (let i = 0; i < posArr.length; i += 3) {
-      cx += posArr[i];
-      cy += posArr[i + 1];
-      cz += posArr[i + 2];
-    }
-    cx /= n; cy /= n; cz /= n;
-    setCentroid([cx, cy, cz]);
-  }, [geometry]);
+  // useEffect(() => {
+  //   if (!geometry || !geometry.attributes || !geometry.attributes.position) return;
+  //   const posArr = geometry.attributes.position.array;
+  //   const n = posArr.length / 3;
+  //   if (n === 0) return;
+  //   let cx = 0, cy = 0, cz = 0;
+  //   for (let i = 0; i < posArr.length; i += 3) {
+  //     cx += posArr[i];
+  //     cy += posArr[i + 1];
+  //     cz += posArr[i + 2];
+  //   }
+  //   cx /= n; cy /= n; cz /= n;
+  //   setCentroid([cx, cy, cz]);
+  // }, [geometry]);
 
   // Apply transform to group and compute transformed centroid
   useEffect(() => {
@@ -158,7 +158,7 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
 
       {transformedCentroid && (
         <mesh position={transformedCentroid}>
-          <sphereGeometry args={[markerSize * 1.2, 12, 12]} />
+          <sphereGeometry args={[markerSize , 12, 12]} />
           <meshStandardMaterial color={new THREE.Color(0xfaa500)} />
         </mesh>
       )}
@@ -166,7 +166,7 @@ function Model({ url, color, opacity, animating, phase, matrix }) {
   );
 }
 
-export default function VisualCompare({ fileA, fileB, transformB, onAlign  }) {
+export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign  }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
   const [opacity, setOpacity] = useState(0.3);
@@ -360,6 +360,7 @@ export default function VisualCompare({ fileA, fileB, transformB, onAlign  }) {
               opacity={opacity}
               animating={animating}
               phase={0}
+              centroid={centroidA}
             />
           )}
           {urlB && showB && (
@@ -370,6 +371,7 @@ export default function VisualCompare({ fileA, fileB, transformB, onAlign  }) {
               animating={animating}
               phase={Math.PI}
               matrix={showRaw ? null : transformB}
+              centroid={centroidB} 
             />
           )}
         </Canvas>
