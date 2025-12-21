@@ -173,6 +173,8 @@ export default function App() {
               fileA={fileA}
               fileB={fileB}
               transformB={alignment}
+              centroidA={surfaceCentroidA}
+              centroidB={surfaceCentroidB}
               onAlign={handleAutoAlign}
             />
           </div>
