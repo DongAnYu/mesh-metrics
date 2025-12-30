@@ -113,6 +113,8 @@ function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
     const sphere = geometry.boundingSphere;
     const cameraFOV = camera.fov * Math.PI / 180;
     const distance = sphere.radius / Math.tan(cameraFOV / 2);
+    camera.far = Math.max(camera.far ?? 0, distance * 4);
+    camera.updateProjectionMatrix();
     camera.position.z = distance;
     camera.lookAt(sphere.center);
   }, [geometry, camera]);
@@ -342,7 +344,7 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
 
       <div className="visual-compare-canvas">
         <Canvas 
-          camera={{ position: [3, 3, 3], fov: 50 }}
+          camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
           gl={{ preserveDrawingBuffer: true }}
           onCreated={({ gl }) => {
             gl.setClearColor('#f0f0f0', 1);

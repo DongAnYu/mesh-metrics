@@ -20,7 +20,7 @@ export default function STLViewer({ file, matrix, centroid: surfaceCentroid }) {
 
   return (
     <div style={{ width: "100%", height: "300px", border: "1px solid #ddd", borderRadius: "8px" }}>
-      <Canvas>
+      <Canvas camera={{ position: [0, 0, 5], near: 0.01, far: 100000 }}>
         <OrbitControls />
 
         <ambientLight intensity={0.5} />
@@ -67,6 +67,8 @@ function Model({ url, matrix, surfaceCentroid }) {
 
     const sphere = geometry.boundingSphere;
     const distance = sphere.radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    camera.far = Math.max(camera.far ?? 0, distance * 4);
+    camera.updateProjectionMatrix();
     camera.position.z = sphere.center.z + distance * 1.5;
     camera.lookAt(sphere.center);
   }, [geometry, camera]);
