@@ -7,6 +7,7 @@ from trimesh.transformations import euler_matrix, euler_from_matrix
 from scipy.spatial import cKDTree
 from utils import safe_sample
 import math
+import time
 import config
 
 def ensure_single_mesh(mesh_obj, label="mesh"):
@@ -51,6 +52,8 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
     # Use user-provided sharpness or default
     S = user_sharpness if user_sharpness is not None else config.DEFAULT_SHARPNESS
 
+    timings = {}
+
     # --- Compute centroids (area-weighted surface centroids) ---
     centroid_A = surface_centroid(meshA)
     centroid_B = surface_centroid(meshB)
@@ -89,6 +92,7 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         SAMPLE_GRID = config.SAMPLE_GRID_SMALL
         SAMPLE_ICP = config.SAMPLE_ICP_SMALL
 
+    t_sampling = time.perf_counter()
     try:
         PA_grid = safe_sample(meshA, min(SAMPLE_GRID, int(max(config.MIN_SAMPLE_COUNT, meshA.area))), label="PA_grid")
         PB_grid = safe_sample(meshB_translated, min(SAMPLE_GRID, int(max(config.MIN_SAMPLE_COUNT, meshB_translated.area))), label="PB_grid")
@@ -102,6 +106,8 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
     except Exception:
         PA_icp = meshA.vertices
         PB_icp = meshB_translated.vertices
+
+    timings["sampling"] = time.perf_counter() - t_sampling
 
     # PRE-BUILD KD-TREE FOR TARGET (reused across all rotations)
     kdtree_A = cKDTree(PA_grid)
@@ -189,11 +195,14 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         return final_chamfer, best_t, best_a, final_max
 
     # Run optimized rotation search (177 fast evaluations + 1 full chamfer)
+    t_rot = time.perf_counter()
     best_chamfer, best_transform, best_angles, best_max = adaptive_rotation_search(T)
+    timings["rotation_search"] = time.perf_counter() - t_rot
     print("best_chamfer_before_icp", best_chamfer)
 
     # --- Multi-start ICP refinement with consistent evaluation methodology ---
     try:
+        t_icp = time.perf_counter()
         rng = np.random.default_rng(config.ICP_RANDOM_SEED)
 
         PA_points = PA_icp
@@ -225,11 +234,14 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
             combined = T_icp @ R_about_init @ T
             candidate_transforms.append((f"ICP-{i}", combined))
 
+        timings["icp"] = time.perf_counter() - t_icp
+
         # --- CONSISTENT EVALUATION: Test all candidates the same way ---
         # Use same seed for all evaluations to match frontend behavior
         np.random.seed(config.EVAL_RANDOM_SEED)
         PA_eval = safe_sample(meshA, config.EVAL_SAMPLE_COUNT, label="PA_eval")
         
+        t_eval = time.perf_counter()
         best_candidate_name = None
         best_candidate_transform = None
         best_candidate_chamfer = float('inf')
@@ -265,6 +277,8 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
                 best_candidate_max = max_eval
                 best_candidate_similarity = similarity_score
 
+        timings["candidate_eval"] = time.perf_counter() - t_eval
+
         print(f"Winner: {best_candidate_name} with similarity={best_candidate_similarity:.6f}")
         
         # Adopt the best candidate
@@ -282,6 +296,10 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         print(f"ICP refinement failed: {e}")
         pass
 
+    # Aggregate total timing and log
+    timings["total"] = sum(timings.values()) if timings else 0.0
+    print("Alignment timings (s):", timings)
+
     result = {
         "transform": best_transform.tolist(),
         "centroidA": centroid_A.tolist(),
@@ -289,7 +307,8 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         "type": "centroid+rotation",
         "chamfer_after": float(best_chamfer),
         "maxdist_after": float(best_max),
-        "rotation_radians": [float(a) for a in best_angles]
+        "rotation_radians": [float(a) for a in best_angles],
+        "timings": timings,
     }
 
     return result

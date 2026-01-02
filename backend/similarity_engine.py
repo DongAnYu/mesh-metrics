@@ -278,7 +278,15 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
     # If alignment returned diagnostics, merge a few into the response for visibility
     try:
         if align_res is not None and isinstance(align_res, dict):
-            for k in ('transform', 'centroidA', 'centroidB', 'chamfer_after', 'maxdist_after', 'rotation_radians'):
+            for k in (
+                'transform',
+                'centroidA',
+                'centroidB',
+                'chamfer_after',
+                'maxdist_after',
+                'rotation_radians',
+                'timings',  # include per-stage timings from alignment
+            ):
                 if k in align_res:
                     result[k] = align_res[k]
     except Exception:
