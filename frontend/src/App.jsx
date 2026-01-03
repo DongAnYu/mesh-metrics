@@ -321,10 +321,15 @@ export default function App() {
               <button
                 onClick={handleCompare}
                 className="compare-button"
-                disabled={isLoading}
+                disabled={isLoading || !validateWeightSum(weights)}
               >
                 {isLoading ? "Working..." : "Calculate Similarity"}
               </button>
+              {!validateWeightSum(weights) && !isLoading && (
+                <p className="weight-warning">
+                  ⚠ Weights must sum to 1.0 (current: {(weights.chamfer + weights.volume + weights.area + weights.bbox + weights.maxdist).toFixed(3)})
+                </p>
+              )}
               {isLoading && (
                 <div className="loading-indicator" aria-live="polite">
                   <div className="loading-dots">

@@ -11,7 +11,7 @@
 }
 
 .visual-compare-placeholder {
-  height: 550px;
+  height: 545px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -38,14 +38,16 @@
 .header-text h3 {
   margin: 0 0 8px 0;
   font-size: 24px;
-  font-weight: 700;
-  color: #e2e8f0;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: -0.5px;
 }
 
 .header-text p {
   margin: 0;
   font-size: 14px;
-  color: #94a3b8;
+  color: #cbd5e1;
+  font-weight: 400;
 }
 
 /* Controls */
@@ -69,10 +71,10 @@
   display: block;
   margin-bottom: 8px;
   font-size: 13px;
-  font-weight: 700;
-  color: #cbd5e1;
+  font-weight: 600;
+  color: #f1f5f9;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .control-slider {
@@ -167,6 +169,25 @@
   filter: saturate(0.8);
 }
 
+.control-button.align-button {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  font-weight: 600;
+  border: none;
+  box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
+}
+
+.control-button.align-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 15px 40px rgba(59, 130, 246, 0.4);
+}
+
+.control-button.align-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
 .control-button:hover {
   border-color: #22d3ee;
   background: #0f172a;
@@ -233,8 +254,8 @@
   align-items: center;
   gap: 10px;
   font-size: 14px;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-weight: 500;
+  color: #f1f5f9;
 }
 
 .legend-color-box {
