@@ -168,7 +168,7 @@ function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
   );
 }
 
-export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign  }) {
+export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign, isLoading, loadingLabel }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
   const [opacity, setOpacity] = useState(0.3);
@@ -203,14 +203,7 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
     console.log("🧭 transformB in VisualCompare:", transformB);
   }, [transformB]);
 
-
-  if (!fileA || !fileB) {
-    return (
-      <div className="visual-compare-placeholder">
-        <p>Upload both STL files to see visual comparison</p>
-      </div>
-    );
-  }
+  const hasBoth = Boolean(fileA && fileB);
 
   const scheme = COLOR_SCHEMES[colorScheme];
 
@@ -296,8 +289,20 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
               background: "linear-gradient(135deg, #10b981, #059669)",
               color: "white"
             }}
+            disabled={!hasBoth || isLoading}
           >
-            Auto-Align Models
+            {isLoading ? (
+              <span className="inline-loading">
+                <span className="loading-dots loading-dots-inline">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span>{loadingLabel || "Aligning"}</span>
+              </span>
+            ) : (
+              "Auto-Align Models"
+            )}
           </button>
           {transformB && (
             <button
@@ -343,40 +348,47 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
       </div>
 
       <div className="visual-compare-canvas">
-        <Canvas 
-          camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
-          gl={{ preserveDrawingBuffer: true }}
-          onCreated={({ gl }) => {
-            gl.setClearColor('#f0f0f0', 1);
-          }}
-        >
-          <OrbitControls enableDamping dampingFactor={0.05} />
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[10, 10, 5]} intensity={0.8} />
-          <directionalLight position={[-10, -10, -5]} intensity={0.3} />
-          
-          {urlA && showA && (
-            <Model 
-              url={urlA} 
-              color={scheme.color1}
-              opacity={opacity}
-              animating={animating}
-              phase={0}
-              centroid={centroidA}
-            />
-          )}
-          {urlB && showB && (
-            <Model
-              url={urlB}
-              color={scheme.color2}
-              opacity={opacity}
-              animating={animating}
-              phase={Math.PI}
-              matrix={showRaw ? null : transformB}
-              centroid={centroidB} 
-            />
-          )}
-        </Canvas>
+        {hasBoth ? (
+          <Canvas 
+            camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
+            gl={{ preserveDrawingBuffer: true }}
+            onCreated={({ gl }) => {
+              gl.setClearColor('#f0f0f0', 1);
+            }}
+          >
+            <OrbitControls enableDamping dampingFactor={0.05} />
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[10, 10, 5]} intensity={0.8} />
+            <directionalLight position={[-10, -10, -5]} intensity={0.3} />
+            
+            {urlA && showA && (
+              <Model 
+                url={urlA} 
+                color={scheme.color1}
+                opacity={opacity}
+                animating={animating}
+                phase={0}
+                centroid={centroidA}
+              />
+            )}
+            {urlB && showB && (
+              <Model
+                url={urlB}
+                color={scheme.color2}
+                opacity={opacity}
+                animating={animating}
+                phase={Math.PI}
+                matrix={showRaw ? null : transformB}
+                centroid={centroidB} 
+              />
+            )}
+          </Canvas>
+        ) : (
+          <div className="visual-compare-placeholder">
+            <p><strong>Upload both STL files</strong> to see the overlay.</p>
+            <p>Use color scheme, opacity, and hide/show controls to inspect differences.</p>
+          </div>
+        )}
       </div>
 
       <div className="visual-compare-info">

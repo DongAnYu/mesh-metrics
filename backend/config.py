@@ -27,9 +27,13 @@ DEFAULT_SHARPNESS = {
 # SAMPLING STRATEGY - Adaptive based on mesh area
 # =============================================================================
 # Grid search sampling (for rotation optimization)
-SAMPLE_GRID_LARGE = 2500   # For meshes with area > 10000
-SAMPLE_GRID_MEDIUM = 1500  # For meshes with area > 1000
-SAMPLE_GRID_SMALL = 1000   # For smaller meshes
+# SAMPLE_GRID_LARGE = 2500   # For meshes with area > 10000
+# SAMPLE_GRID_MEDIUM = 1500  # For meshes with area > 1000
+# SAMPLE_GRID_SMALL = 1000   # For smaller meshes
+
+SAMPLE_GRID_LARGE = 1500   # For meshes with area > 10000
+SAMPLE_GRID_MEDIUM = 500  # For meshes with area > 1000
+SAMPLE_GRID_SMALL = 100   # For smaller meshes
 
 # ICP sampling (for refinement)
 SAMPLE_ICP_LARGE = 8000    # For meshes with area > 10000
@@ -56,18 +60,18 @@ EVAL_RANDOM_SEED = 42      # Must match frontend seed for reproducibility
 ROTATION_COARSE_STEPS = 4  # Every 90° (2π/4)
 
 # Level 2: Medium search around best candidate
-ROTATION_MEDIUM_RANGE_DEG = 40  # ±40° around best
-ROTATION_MEDIUM_STEP_DEG = 20   # Every 20°
+ROTATION_MEDIUM_RANGE_DEG = 30  # ±40° around best
+ROTATION_MEDIUM_STEP_DEG = 30   # Every 20°
 
 # Level 3: Fine search around best candidate
-ROTATION_FINE_RANGE_DEG = 15    # ±15° around best
-ROTATION_FINE_STEP_DEG = 5      # Every 5°
+ROTATION_FINE_RANGE_DEG = 10    # ±15° around best
+ROTATION_FINE_STEP_DEG = 10    # Every 5°
 
 # =============================================================================
 # ICP REFINEMENT - Multi-start parameters
 # =============================================================================
-NUM_ICP_STARTS = 3      # Number of random initializations
-ICP_MAX_ITERATIONS = 200  # Maximum iterations per ICP run
+NUM_ICP_STARTS = 2      # Number of random initializations
+ICP_MAX_ITERATIONS = 150  # Maximum iterations per ICP run
 ICP_RANDOM_SEED = 12345  # Seed for reproducible random starts
 
 # =============================================================================

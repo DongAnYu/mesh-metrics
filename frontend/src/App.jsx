@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { computeSimilarity } from "./api";
 import "./App.css";
-import STLViewer from "./STLViewer";
 import VisualCompare from "./VisualCompare";
 import { computeAlignment } from "./api";
 
@@ -10,10 +9,11 @@ export default function App() {
   const [fileB, setFileB] = useState(null);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("");
-  const [activeTab, setActiveTab] = useState("preview"); // "preview" or "compare"
   const [alignment, setAlignment] = useState(null);
   const [surfaceCentroidA, setSurfaceCentroidA] = useState(null);
   const [surfaceCentroidB, setSurfaceCentroidB] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState("");
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -77,6 +77,8 @@ export default function App() {
     }
 
     setStatus("Computing similarity...");
+    setIsLoading(true);
+    setLoadingLabel("Calculating similarity");
     setResult(null);
 
     try {
@@ -86,6 +88,9 @@ export default function App() {
       setStatus("Done!");
     } catch (err) {
       setStatus(err.message);
+    } finally {
+      setIsLoading(false);
+      setLoadingLabel("");
     }
   }
 
@@ -96,6 +101,8 @@ export default function App() {
     }
 
     setStatus("Computing alignment...");
+    setIsLoading(true);
+    setLoadingLabel("Aligning models");
     
     try {
       const alignResult = await computeAlignment(fileA, fileB);
@@ -108,66 +115,43 @@ export default function App() {
     } catch (err) {
       setStatus(`Alignment error: ${err.message}`);
       console.error(err);
+    } finally {
+      setIsLoading(false);
+      setLoadingLabel("");
     }
   }
 
   return (
-    <div className="app-container">
-      <div className="app-card">
+    <div className="app-shell">
+      <div className="app-header">
         <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>
+        <p className="app-subtitle">Upload, overlay, tune weights, and measure alignment quality.</p>
+      </div>
 
-        <div className="file-uploads">
-          <div className="file-upload-box">
-            <p className="file-label">STL File A:</p>
-            <input 
-              type="file" 
-              accept=".stl" 
-              onChange={(e) => setFileA(e.target.files[0])} 
-              className="file-input" 
-            />
-          </div>
-
-          <div className="file-upload-box">
-            <p className="file-label">STL File B:</p>
-            <input 
-              type="file" 
-              accept=".stl" 
-              onChange={(e) => setFileB(e.target.files[0])} 
-              className="file-input" 
-            />
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="tab-navigation">
-          <button
-            className={`tab-button ${activeTab === "preview" ? "active" : ""}`}
-            onClick={() => setActiveTab("preview")}
-          >
-            Individual Preview
-          </button>
-          <button
-            className={`tab-button ${activeTab === "compare" ? "active" : ""}`}
-            onClick={() => setActiveTab("compare")}
-          >
-            Visual Comparison
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === "preview" ? (
-          <div className="file-viewers">
-            <div className="viewer-box">
-              <h4>Preview A</h4>
-              <STLViewer file={fileA} centroid={surfaceCentroidA} />
+      <div className="app-grid">
+        <div className="app-left">
+          <div className="file-uploads">
+            <div className="file-upload-box">
+              <p className="file-label">STL File A:</p>
+              <input 
+                type="file" 
+                accept=".stl" 
+                onChange={(e) => setFileA(e.target.files[0])} 
+                className="file-input" 
+              />
             </div>
 
-            <div className="viewer-box">
-              <h4>Preview B</h4>
-              <STLViewer file={fileB} matrix={alignment} centroid={surfaceCentroidB} />
+            <div className="file-upload-box">
+              <p className="file-label">STL File B:</p>
+              <input 
+                type="file" 
+                accept=".stl" 
+                onChange={(e) => setFileB(e.target.files[0])} 
+                className="file-input" 
+              />
             </div>
           </div>
-        ) : (
+
           <div className="visual-compare-container">
             <VisualCompare
               fileA={fileA}
@@ -176,168 +160,189 @@ export default function App() {
               centroidA={surfaceCentroidA}
               centroidB={surfaceCentroidB}
               onAlign={handleAutoAlign}
-            />
-          </div>
-        )}
-
-        <h3 className="weights-title">Metric Weights</h3>
-        <p className="section-description">
-          Control the importance of each metric (must sum to 1.0)
-        </p>
-
-        <div className="weights-container">
-          <div className="weight-item">
-            <label className="weight-label">
-              <span>Chamfer Distance</span>
-              <span className="weight-value">{weights.chamfer}</span>
-            </label>
-            <p className="weight-description">Measures point-to-point surface similarity between meshes</p>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={weights.chamfer}
-              onChange={(e) => updateWeight("chamfer", e.target.value)} 
-              className="weight-slider" 
-            />
-          </div>
-
-          <div className="weight-item">
-            <label className="weight-label">
-              <span>Volume Difference</span>
-              <span className="weight-value">{weights.volume}</span>
-            </label>
-            <p className="weight-description">Compares the internal volume of both models</p>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={weights.volume}
-              onChange={(e) => updateWeight("volume", e.target.value)} 
-              className="weight-slider" 
-            />
-          </div>
-
-          <div className="weight-item">
-            <label className="weight-label">
-              <span>Surface Area</span>
-              <span className="weight-value">{weights.area}</span>
-            </label>
-            <p className="weight-description">Evaluates the difference in total surface area</p>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={weights.area}
-              onChange={(e) => updateWeight("area", e.target.value)} 
-              className="weight-slider" 
-            />
-          </div>
-
-          <div className="weight-item">
-            <label className="weight-label">
-              <span>Bounding Box</span>
-              <span className="weight-value">{weights.bbox}</span>
-            </label>
-            <p className="weight-description">Compares the overall dimensions and extents</p>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={weights.bbox}
-              onChange={(e) => updateWeight("bbox", e.target.value)} 
-              className="weight-slider" 
-            />
-          </div>
-
-          <div className="weight-item">
-            <label className="weight-label">
-              <span>Maximum Distance</span>
-              <span className="weight-value">{weights.maxdist}</span>
-            </label>
-            <p className="weight-description">Measures the largest deviation between surfaces</p>
-            <input 
-              type="range" 
-              min="0" 
-              max="1" 
-              step="0.01"
-              value={weights.maxdist}
-              onChange={(e) => updateWeight("maxdist", e.target.value)} 
-              className="weight-slider" 
+              isLoading={isLoading}
+              loadingLabel={loadingLabel}
             />
           </div>
         </div>
 
-        <h3 className="weights-title">Strictness Settings</h3>
-        <p className="section-description">
-          Control how strictly differences are penalized (0% = very forgiving, 100% = very strict)
-        </p>
-        <div className="sharpness-explanation">
-          <p><strong>Higher strictness</strong> = Small differences significantly lower similarity score</p>
-          <p><strong>Lower strictness</strong> = More tolerant of differences between models</p>
-        </div>
-
-        <div className="weights-container">
-          <div className="weight-item sharpness-item">
-            <label className="weight-label">
-              <span>Chamfer Distance Strictness</span>
-              <span className="weight-value">{strictness.chamfer}%</span>
-            </label>
-            <input 
-              type="range" 
-              min="0" 
-              max="100" 
-              step="1"
-              value={strictness.chamfer}
-              onChange={(e) => updateStrictness("chamfer", e.target.value)} 
-              className="weight-slider sharpness-slider" 
-            />
-            <div className="sharpness-scale">
-              <span>Very Forgiving (0%)</span>
-              <span>Moderate (50%)</span>
-              <span>Very Strict (100%)</span>
+        <div className="app-right">
+          <div className="sidebar-panel">
+            <div className="sidebar-header">
+              <span className="sidebar-dot" />
+              <span className="sidebar-dot" />
+              <span className="sidebar-dot" />
+              <h3>Parameters</h3>
             </div>
-          </div>
 
-          <div className="weight-item sharpness-item">
-            <label className="weight-label">
-              <span>Max Distance Strictness</span>
-              <span className="weight-value">{strictness.maxdist}%</span>
-            </label>
-            <input 
-              type="range" 
-              min="0" 
-              max="100" 
-              step="1"
-              value={strictness.maxdist}
-              onChange={(e) => updateStrictness("maxdist", e.target.value)} 
-              className="weight-slider sharpness-slider" 
-            />
-            <div className="sharpness-scale">
-              <span>Very Forgiving (0%)</span>
-              <span>Moderate (50%)</span>
-              <span>Very Strict (100%)</span>
+            <div className="sidebar-section">
+              <h4 className="weights-title">Metric Weights</h4>
+              <p className="section-description">
+                Control the importance of each metric (must sum to 1.0)
+              </p>
+
+              <div className="weights-container">
+                <div className="weight-item">
+                  <label className="weight-label">
+                    <span>Chamfer Distance</span>
+                    <span className="weight-value">{weights.chamfer}</span>
+                  </label>
+                  <p className="weight-description">Measures point-to-point surface similarity between meshes</p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={weights.chamfer}
+                    onChange={(e) => updateWeight("chamfer", e.target.value)} 
+                    className="weight-slider" 
+                  />
+                </div>
+
+                <div className="weight-item">
+                  <label className="weight-label">
+                    <span>Volume Difference</span>
+                    <span className="weight-value">{weights.volume}</span>
+                  </label>
+                  <p className="weight-description">Compares the internal volume of both models</p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={weights.volume}
+                    onChange={(e) => updateWeight("volume", e.target.value)} 
+                    className="weight-slider" 
+                  />
+                </div>
+
+                <div className="weight-item">
+                  <label className="weight-label">
+                    <span>Surface Area</span>
+                    <span className="weight-value">{weights.area}</span>
+                  </label>
+                  <p className="weight-description">Evaluates the difference in total surface area</p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={weights.area}
+                    onChange={(e) => updateWeight("area", e.target.value)} 
+                    className="weight-slider" 
+                  />
+                </div>
+
+                <div className="weight-item">
+                  <label className="weight-label">
+                    <span>Bounding Box</span>
+                    <span className="weight-value">{weights.bbox}</span>
+                  </label>
+                  <p className="weight-description">Compares the overall dimensions and extents</p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={weights.bbox}
+                    onChange={(e) => updateWeight("bbox", e.target.value)} 
+                    className="weight-slider" 
+                  />
+                </div>
+
+                <div className="weight-item">
+                  <label className="weight-label">
+                    <span>Maximum Distance</span>
+                    <span className="weight-value">{weights.maxdist}</span>
+                  </label>
+                  <p className="weight-description">Measures the largest deviation between surfaces</p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="1" 
+                    step="0.01"
+                    value={weights.maxdist}
+                    onChange={(e) => updateWeight("maxdist", e.target.value)} 
+                    className="weight-slider" 
+                  />
+                </div>
+              </div>
             </div>
+
+            <div className="sidebar-section">
+              <h4 className="weights-title">Strictness Settings</h4>
+
+              <div className="weights-container">
+                <div className="weight-item sharpness-item">
+                  <label className="weight-label">
+                    <span>Chamfer Distance Strictness</span>
+                    <span className="weight-value">{strictness.chamfer}%</span>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="1"
+                    value={strictness.chamfer}
+                    onChange={(e) => updateStrictness("chamfer", e.target.value)} 
+                    className="weight-slider sharpness-slider" 
+                  />
+                  <div className="sharpness-scale">
+                    <span>Very Forgiving (0%)</span>
+                    <span>Moderate (50%)</span>
+                    <span>Very Strict (100%)</span>
+                  </div>
+                </div>
+
+                <div className="weight-item sharpness-item">
+                  <label className="weight-label">
+                    <span>Max Distance Strictness</span>
+                    <span className="weight-value">{strictness.maxdist}%</span>
+                  </label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="1"
+                    value={strictness.maxdist}
+                    onChange={(e) => updateStrictness("maxdist", e.target.value)} 
+                    className="weight-slider sharpness-slider" 
+                  />
+                  <div className="sharpness-scale">
+                    <span>Very Forgiving (0%)</span>
+                    <span>Moderate (50%)</span>
+                    <span>Very Strict (100%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sidebar-actions">
+              <button
+                onClick={handleCompare}
+                className="compare-button"
+                disabled={isLoading}
+              >
+                {isLoading ? "Working..." : "Calculate Similarity"}
+              </button>
+              {isLoading && (
+                <div className="loading-indicator" aria-live="polite">
+                  <div className="loading-dots">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <span className="loading-text">{loadingLabel || "Processing"}</span>
+                </div>
+              )}
+              <p className="status-text">{status}</p>
+            </div>
+
           </div>
         </div>
-
-        <div style={{ display: "flex", gap: "12px", marginTop: "16px" }}>
-          <button
-            onClick={handleCompare}
-            className="compare-button"
-            style={{ flex: 1 }}
-          >
-            Calculate Similarity
-          </button>
-        </div>
-
-        <p className="status-text">{status}</p>
-        
-        {result && (
+      </div>
+      {result && (
+        <div className="results-row">
           <div className="results-box">
             <h3 className="results-title">Results:</h3>
             <p className="results-overall">
@@ -372,8 +377,8 @@ export default function App() {
               <pre className="results-json">{JSON.stringify(result, null, 2)}</pre>
             </details>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
