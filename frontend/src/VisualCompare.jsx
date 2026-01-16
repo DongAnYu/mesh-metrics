@@ -5,35 +5,36 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import "./VisualCompare.css";
 
+const FIXED_OPACITY = 0.25; // Low opacity enables GPU alpha blending for grey overlaps
+
 const COLOR_SCHEMES = {
-  "green-red": {
+  "green-magenta": {
     name1: "Model A (Green)",
-    name2: "Model B (Red)", 
+    name2: "Model B (Magenta)", 
     color1: new THREE.Color(0x00fa00),
-    color2: new THREE.Color(0xfa0000)
+    color2: new THREE.Color(0xfa00fa)
   },
   "blue-orange": {
     name1: "Model A (Blue)",
     name2: "Model B (Orange)",
     color1: new THREE.Color(0x0064fa),
-    color2: new THREE.Color(0xfaa500)
+    color2: new THREE.Color(0xfa9b00)
   },
   "purple-yellow": {
     name1: "Model A (Purple)", 
     name2: "Model B (Yellow)",
     color1: new THREE.Color(0x644bfa),
-    color2: new THREE.Color(0xfafa00)
+    color2: new THREE.Color(0xfab500)
   }
 };
 
 
-function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
+function Model({ url, color, animating, phase, matrix, centroid }) {
   const groupRef = useRef();
   const meshRef = useRef();
   const { camera } = useThree();
   const geometry = useLoader(STLLoader, url);
   const [time, setTime] = useState(0);
-  // const [centroid, setCentroid] = useState(null);
   const [transformedCentroid, setTransformedCentroid] = useState(null);
 
   // Convert a nested row-major 4x4 matrix to column-major flat array
@@ -127,7 +128,7 @@ function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
 
   const currentOpacity = animating
     ? 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(time + phase))
-    : opacity;
+    : FIXED_OPACITY;
 
   const markerSize = (() => {
     if (geometry && geometry.boundingSphere) return geometry.boundingSphere.radius * 0.02;
@@ -144,7 +145,7 @@ function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
             transparent
             opacity={currentOpacity}
             side={THREE.DoubleSide}
-            depthWrite={opacity > 0.95}
+            depthWrite={FIXED_OPACITY > 0.95}
             metalness={0.1}
             roughness={0.4}
           />
@@ -168,11 +169,10 @@ function Model({ url, color, opacity, animating, phase, matrix, centroid }) {
   );
 }
 
-export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign  }) {
+export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign, isLoading, loadingLabel }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
-  const [opacity, setOpacity] = useState(0.3);
-  const [colorScheme, setColorScheme] = useState("green-red");
+  const [colorScheme, setColorScheme] = useState("green-magenta");
   const [showA, setShowA] = useState(true);
   const [showB, setShowB] = useState(true);
   const [animating, setAnimating] = useState(false);
@@ -203,14 +203,7 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
     console.log("🧭 transformB in VisualCompare:", transformB);
   }, [transformB]);
 
-
-  if (!fileA || !fileB) {
-    return (
-      <div className="visual-compare-placeholder">
-        <p>Upload both STL files to see visual comparison</p>
-      </div>
-    );
-  }
+  const hasBoth = Boolean(fileA && fileB);
 
   const scheme = COLOR_SCHEMES[colorScheme];
 
@@ -239,28 +232,13 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
 
       <div className="visual-compare-controls">
         <div className="control-group">
-          <label className="control-label">
-            Opacity: {opacity.toFixed(2)}
-          </label>
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={opacity}
-            onChange={(e) => setOpacity(parseFloat(e.target.value))}
-            className="control-slider"
-          />
-        </div>
-
-        <div className="control-group">
           <label className="control-label">Color Scheme</label>
           <select 
             value={colorScheme}
             onChange={(e) => setColorScheme(e.target.value)}
             className="control-select"
           >
-            <option value="green-red">Green / Red (Colorblind-friendly)</option>
+            <option value="green-magenta">Green / Magenta (Overlap Detection)</option>
             <option value="blue-orange">Blue / Orange</option>
             <option value="purple-yellow">Purple / Yellow</option>
           </select>
@@ -290,14 +268,21 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
         <div className="control-button-group" style={{ marginTop: "12px" }}>
           <button
             onClick={handleAlign}
-            className="control-button"
-            style={{ 
-              flex: 1,
-              background: "linear-gradient(135deg, #10b981, #059669)",
-              color: "white"
-            }}
+            className="control-button align-button"
+            disabled={!hasBoth || isLoading}
           >
-            Auto-Align Models
+            {isLoading ? (
+              <span className="inline-loading">
+                <span className="loading-dots loading-dots-inline">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span>{loadingLabel || "Aligning"}</span>
+              </span>
+            ) : (
+              "Auto-Align Models"
+            )}
           </button>
           {transformB && (
             <button
@@ -309,20 +294,6 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
             </button>
           )}
         </div>
-
-        {alignStatus && (
-          <div style={{ 
-            marginTop: "8px", 
-            padding: "8px 12px", 
-            background: alignStatus.includes("✓") ? "#d1fae5" : alignStatus.includes("Error") ? "#fee2e2" : "#fef3c7",
-            color: alignStatus.includes("✓") ? "#065f46" : alignStatus.includes("Error") ? "#991b1b" : "#92400e",
-            borderRadius: "6px",
-            fontSize: "14px",
-            textAlign: "center"
-          }}>
-            {alignStatus}
-          </div>
-        )}
       </div>
 
       <div className="visual-compare-legend">
@@ -340,43 +311,62 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
           />
           <span>{scheme.name2}</span>
         </div>
+        {alignStatus && (
+          <div className="legend-item align-status" style={{ 
+            marginLeft: "auto",
+            padding: "4px 12px", 
+            background: alignStatus.includes("✓") ? "rgba(16, 185, 129, 0.15)" : alignStatus.includes("Error") ? "rgba(239, 68, 68, 0.15)" : "rgba(251, 191, 36, 0.15)",
+            color: alignStatus.includes("✓") ? "#10b981" : alignStatus.includes("Error") ? "#ef4444" : "#fbbf24",
+            borderRadius: "6px",
+            fontSize: "13px",
+            fontWeight: "600",
+            border: alignStatus.includes("✓") ? "1px solid rgba(16, 185, 129, 0.3)" : alignStatus.includes("Error") ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(251, 191, 36, 0.3)"
+          }}>
+            {alignStatus}
+          </div>
+        )}
       </div>
 
       <div className="visual-compare-canvas">
-        <Canvas 
-          camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
-          gl={{ preserveDrawingBuffer: true }}
-          onCreated={({ gl }) => {
-            gl.setClearColor('#f0f0f0', 1);
-          }}
-        >
-          <OrbitControls enableDamping dampingFactor={0.05} />
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[10, 10, 5]} intensity={0.8} />
-          <directionalLight position={[-10, -10, -5]} intensity={0.3} />
-          
-          {urlA && showA && (
-            <Model 
-              url={urlA} 
-              color={scheme.color1}
-              opacity={opacity}
-              animating={animating}
-              phase={0}
-              centroid={centroidA}
-            />
-          )}
-          {urlB && showB && (
-            <Model
-              url={urlB}
-              color={scheme.color2}
-              opacity={opacity}
-              animating={animating}
-              phase={Math.PI}
-              matrix={showRaw ? null : transformB}
-              centroid={centroidB} 
-            />
-          )}
-        </Canvas>
+        {hasBoth ? (
+          <Canvas 
+            camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
+            gl={{ preserveDrawingBuffer: true }}
+            onCreated={({ gl }) => {
+              gl.setClearColor('#f0f0f0', 1);
+            }}
+          >
+            <OrbitControls enableDamping dampingFactor={0.05} />
+            <ambientLight intensity={0.6} />
+            <directionalLight position={[10, 10, 5]} intensity={0.8} />
+            <directionalLight position={[-10, -10, -5]} intensity={0.3} />
+            
+            {urlA && showA && (
+              <Model 
+                url={urlA} 
+                color={scheme.color1}
+                animating={animating}
+                phase={0}
+                centroid={centroidA}
+              />
+            )}
+            {urlB && showB && (
+              <Model
+                url={urlB}
+                color={scheme.color2}
+                animating={animating}
+                phase={Math.PI}
+                matrix={showRaw ? null : transformB}
+                centroid={centroidB} 
+              />
+            )}
+          </Canvas>
+        ) : (
+          <div className="visual-compare-placeholder">
+            <p><strong>Upload both STL files</strong> to see the overlay.</p>
+            <p>Use color scheme, opacity, and hide/show controls to inspect differences.</p>
+          </div>
+        )}
       </div>
 
       <div className="visual-compare-info">
