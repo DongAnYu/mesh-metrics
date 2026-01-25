@@ -43,3 +43,22 @@ Allow users to upload **CADQuery scripts**, execute them on the backend to gener
 - Supports **parametric, script-based workflows**, very common in generative design or automated engineering pipelines.  
 - Reduces friction: users don’t need to export intermediate STEP/STL files manually.  
 - Can integrate with **MeshMetrics evaluation** to immediately compare CADQuery-generated models against GT.
+
+
+## 3. Batch Testing & Test Matrix Dashboard
+
+**Goal:**  
+Enable large-scale **testing and competitor benchmarking** by evaluating many candidate models against a library of GT baselines.
+
+**Benefits:**  
+- Scales comparison workflows to **hundreds or thousands of GT models**.  
+- Eliminates manual inspection by surfacing results in a **single dashboard**.  
+- Enables objective, repeatable comparison between internal and competitor outputs.
+
+**Test Matrix Example:**
+
+| GT ID   | Caddy Score (Caddy-XXX) | AdamCAD Score (Adam-XXX) | Winner   | 
+|--------|-------------|---------------|----------|
+| GT-001 | 0.92        | 0.78          | Caddy   | 
+| GT-002 | 0.85        | 0.88          | AdamCAD| 
+| ...    | ...         | ...           | ...      |
