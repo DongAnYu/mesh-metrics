@@ -5,15 +5,25 @@ import VisualCompare from "./VisualCompare";
 import { computeAlignment } from "./api";
 
 export default function App() {
-  const [fileA, setFileA] = useState(null);
-  const [fileB, setFileB] = useState(null);
+  // 🟢 Phase 1: New state structure (GT + candidates)
+  const [gtFile, setGtFile] = useState(null);
+  const [gtCentroid, setGtCentroid] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  // { id, file, alignment?, centroid?, metrics? }
+  const [activeCandidateId, setActiveCandidateId] = useState(null);
+  
+  // Legacy state (will be removed in Phase 2)
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState("");
-  const [alignment, setAlignment] = useState(null);
-  const [surfaceCentroidA, setSurfaceCentroidA] = useState(null);
-  const [surfaceCentroidB, setSurfaceCentroidB] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
+  
+  // Computed values from new state structure
+  const fileA = gtFile;
+  const fileB = candidates.find(c => c.id === activeCandidateId)?.file || null;
+  const alignment = candidates.find(c => c.id === activeCandidateId)?.alignment || null;
+  const surfaceCentroidA = gtCentroid;
+  const surfaceCentroidB = candidates.find(c => c.id === activeCandidateId)?.centroid || null;
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -107,10 +117,23 @@ export default function App() {
     try {
       const alignResult = await computeAlignment(fileA, fileB);
       console.log("📍 Alignment result:", alignResult);
-      setAlignment(alignResult.transform);
-      // store backend-provided surface centroids (area-weighted)
-      setSurfaceCentroidA(alignResult.centroidA || null);
-      setSurfaceCentroidB(alignResult.centroidB || null);
+      
+      // Store GT centroid
+      setGtCentroid(alignResult.centroidA || null);
+      
+      // Update the active candidate with alignment data
+      setCandidates(prev => 
+        prev.map(c => 
+          c.id === activeCandidateId 
+            ? { 
+                ...c, 
+                alignment: alignResult.transform,
+                centroid: alignResult.centroidB || null 
+              }
+            : c
+        )
+      );
+      
       setStatus("Models aligned!");
     } catch (err) {
       setStatus(`Alignment error: ${err.message}`);
@@ -131,24 +154,67 @@ export default function App() {
       <div className="app-grid">
         <div className="app-left">
           <div className="file-uploads">
+            {/* 🟢 Phase 2: GT upload (single file) */}
             <div className="file-upload-box">
-              <p className="file-label">STL File A:</p>
+              <p className="file-label">Ground Truth (GT):</p>
               <input 
                 type="file" 
                 accept=".stl" 
-                onChange={(e) => setFileA(e.target.files[0])} 
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  setGtFile(file);
+                }} 
                 className="file-input" 
               />
+              {gtFile && <p className="file-name">✓ {gtFile.name}</p>}
             </div>
 
+            {/* 🟢 Phase 2: Candidate uploads (multiple files) */}
             <div className="file-upload-box">
-              <p className="file-label">STL File B:</p>
-              <input 
-                type="file" 
-                accept=".stl" 
-                onChange={(e) => setFileB(e.target.files[0])} 
-                className="file-input" 
-              />
+              <p className="file-label">Candidates:</p>
+              
+              {/* Show existing candidates with buttons */}
+              {candidates.length > 0 && (
+                <div className="candidate-list">
+                  {candidates.map((candidate, index) => (
+                    <button
+                      key={candidate.id}
+                      onClick={() => setActiveCandidateId(candidate.id)}
+                      className={`candidate-button ${candidate.id === activeCandidateId ? 'active' : ''}`}
+                    >
+                      Candidate {index + 1}
+                      {candidate.id === activeCandidateId && ' ✓'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {/* Add new candidate button */}
+              <label className="add-candidate-button">
+                + Add Candidate
+                <input 
+                  type="file" 
+                  accept=".stl" 
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const newId = Date.now().toString();
+                      setCandidates(prev => [...prev, { id: newId, file }]);
+                      setActiveCandidateId(newId);
+                    }
+                    // Reset input so same file can be selected again
+                    e.target.value = '';
+                  }} 
+                />
+              </label>
+              
+              {/* Show active candidate filename */}
+              {fileB && (
+                <p className="file-name">
+                  Active: {fileB.name}
+                </p>
+              )}
             </div>
           </div>
 
