@@ -92,3 +92,16 @@ MIN_DIAGONAL = 1e-9  # Minimum scene diagonal (fallback to 1.0 if smaller)
 # RELATIVE DIFFERENCE CAP
 # =============================================================================
 RELATIVE_DIFF_CAP = 1.0  # Maximum capped relative difference for similarity scoring
+
+# =============================================================================
+# DISCREPANCY DETECTION - Thresholds for highlighting problematic areas
+# =============================================================================
+# Relative threshold: fraction of bounding box diagonal
+# E.g., 0.01 = 1% of diagonal, 0.05 = 5% of diagonal
+DISCREPANCY_THRESHOLD_FRACTION = 0.1  # 2% of diagonal (default)
+
+# Maximum number of worst discrepancy points to return (for visualization)
+MAX_DISCREPANCY_POINTS = 10  # Return top 10 worst points
+
+# Minimum distance to show arrow (avoid showing arrow for near-perfect matches)
+MIN_ARROW_DISTANCE_FRACTION = 0.02  # 0.5% of diagonal (hide if better than this)

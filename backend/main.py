@@ -63,12 +63,23 @@ async def align(
         # Compute centroid-based alignment
         result = compute_alignment(meshA, meshB)
 
+        print(f"🎯 Alignment result keys: {result.keys()}")
+        print(f"🎯 Worst discrepancy point: {result.get('worstDiscrepancyPoint')}")
+        print(f"🎯 Threshold info: {result.get('thresholdDistance'):.6f} ({result.get('thresholdFraction')*100:.1f}% of {result.get('diagonal'):.6f})")
+        print(f"🎯 Total discrepancy points: {len(result.get('discrepancyPoints', []))}")
+
         return {
             "status": "ok",
             "transform": result["transform"],
             "centroidA": result["centroidA"],
             "centroidB": result["centroidB"],
             "type": result["type"],
+            "worstDiscrepancyPoint": result.get("worstDiscrepancyPoint"),
+            "worstDiscrepancyPointMeshB": result.get("worstDiscrepancyPointMeshB"),
+            "discrepancyPoints": result.get("discrepancyPoints", []),
+            "diagonal": result.get("diagonal"),
+            "thresholdDistance": result.get("thresholdDistance"),
+            "thresholdFraction": result.get("thresholdFraction"),
         }
 
     except Exception as e:

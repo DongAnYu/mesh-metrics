@@ -8,6 +8,8 @@ export default function App() {
   // 🟢 Phase 1: New state structure (GT + candidates)
   const [gtFile, setGtFile] = useState(null);
   const [gtCentroid, setGtCentroid] = useState(null);
+  const [worstDiscrepancyPoint, setWorstDiscrepancyPoint] = useState(null);
+  const [sceneDiagonal, setSceneDiagonal] = useState(null);
   const [candidates, setCandidates] = useState([]);
   // { id, file, alignment?, centroid?, metrics? }
   const [activeCandidateId, setActiveCandidateId] = useState(null);
@@ -283,9 +285,14 @@ export default function App() {
 
       const alignResult = await computeAlignment(gtFileToSend, fileB);
       console.log("📍 Alignment result:", alignResult);
+      console.log("🎯 Worst discrepancy point:", alignResult.worstDiscrepancyPoint);
+      console.log("🎯 Scene diagonal:", alignResult.diagonal);
       
-      // Store GT centroid
+      // Store GT centroid and worst discrepancy point
       setGtCentroid(alignResult.centroidA || null);
+      setWorstDiscrepancyPoint(alignResult.worstDiscrepancyPoint || null);
+      setSceneDiagonal(alignResult.diagonal || null);
+      console.log("🎯 Set worstDiscrepancyPoint state to:", alignResult.worstDiscrepancyPoint);
       
       // Update the active candidate with alignment data
       setCandidates(prev => 
@@ -482,6 +489,8 @@ export default function App() {
               transformB={alignment}
               centroidA={surfaceCentroidA}
               centroidB={surfaceCentroidB}
+              worstDiscrepancyPoint={worstDiscrepancyPoint}
+              sceneDiagonal={sceneDiagonal}
               onAlign={handleAutoAlign}
               isLoading={isLoading}
               loadingLabel={loadingLabel}
