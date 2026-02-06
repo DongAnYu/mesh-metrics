@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { computeSimilarity, executeCadQuery } from "./api";
 import "./App.css";
 import VisualCompare from "./VisualCompare";
@@ -30,6 +30,9 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState("");
   
+  // Error banner state
+  const [error, setError] = useState(null); // { message: string, timestamp: number }
+  
   // Computed values from new state structure
   const fileA = gtMode === 'file' ? gtFile : gtGeneratedFile;
   const fileB = candidates.find(c => c.id === activeCandidateId)?.file || null;
@@ -58,6 +61,18 @@ export default function App() {
     setStrictness((prev) => ({ ...prev, [key]: parseFloat(value) }));
   }
 
+  function showError(message) {
+    setError({ message, timestamp: Date.now() });
+    // Auto-dismiss after 15 seconds for informational messages (CQ-Editor tips)
+    // or 10 seconds for actual errors
+    const dismissTime = message.includes('CQ-Editor') ? 40000 : 10000;
+    setTimeout(() => setError(null), dismissTime);
+  }
+
+  function dismissError() {
+    setError(null);
+  }
+
   function strictnessToSharpness(strictnessPercent) {
     return 1 + (strictnessPercent / 100) * 19;
   }
@@ -80,12 +95,34 @@ export default function App() {
     return Math.abs(total - 1.0) < 1e-6;
   }
 
+  // Global error handler for unhandled errors
+  useEffect(() => {
+    const handleGlobalError = (event) => {
+      console.error("🔴 Global error caught:", event.error);
+      showError(`Unexpected error: ${event.error?.message || "Unknown error occurred"}`);
+    };
+
+    const handleUnhandledRejection = (event) => {
+      console.error("🔴 Unhandled promise rejection:", event.reason);
+      showError(`Unhandled error: ${event.reason?.message || event.reason || "Unknown error occurred"}`);
+    };
+
+    window.addEventListener("error", handleGlobalError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", handleGlobalError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
+  }, []);
+
   async function handleAddCandidateFromCode() {
     console.log("🔵 handleAddCandidateFromCode called");
     
     if (!candidateCode.trim()) {
       console.log("❌ No code entered");
       setStatus("Please enter CadQuery code.");
+      showError("Please enter CadQuery code before adding a candidate.");
       return;
     }
     
@@ -93,10 +130,26 @@ export default function App() {
     setIsLoading(true);
     setLoadingLabel("Executing CadQuery code...");
     
+    // Timer to show warning banner for long operations
+    let exportWarningTimer = null;
+    exportWarningTimer = setTimeout(() => {
+      setLoadingLabel("Exporting to STL...");
+      showError("STL export is taking longer than expected. This is normal for complex models.");
+    }, 5000); // Show warning after 5 seconds
+    
+    let slowExportTimer = null;
+    slowExportTimer = setTimeout(() => {
+      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
+    }, 10000); // Show recommendation after 10 seconds
+    
     try {
       console.log("🚀 Calling executeCadQuery...");
       // Execute CadQuery code and get STL blob
       const stlBlob = await executeCadQuery(candidateCode);
+      
+      // Clear timers if export completed
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -125,7 +178,10 @@ export default function App() {
       console.log("✅ handleAddCandidateFromCode completed successfully");
     } catch (err) {
       console.error("❌ Error in handleAddCandidateFromCode:", err);
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
+      showError(`Failed to execute CadQuery code: ${err.message}`);
     } finally {
       setIsLoading(false);
       setLoadingLabel("");
@@ -138,12 +194,14 @@ export default function App() {
     if (!candidateCode.trim()) {
       console.log("❌ No code entered");
       setStatus("Please enter CadQuery code.");
+      showError("Please enter CadQuery code before updating the candidate.");
       return;
     }
     
     if (!activeCandidateId) {
       console.log("❌ No active candidate to update");
       setStatus("No candidate selected to update.");
+      showError("No candidate selected. Please select a candidate to update.");
       return;
     }
     
@@ -151,10 +209,23 @@ export default function App() {
     setIsLoading(true);
     setLoadingLabel("Re-executing CadQuery code...");
     
+    // Timer to show warning banner for long operations
+    let exportWarningTimer = setTimeout(() => {
+      setLoadingLabel("Exporting to STL...");
+      showError("STL export is taking longer than expected. This is normal for complex models.");
+    }, 3000);
+    
+    let slowExportTimer = setTimeout(() => {
+      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
+    }, 8000);
+    
     try {
       console.log("🚀 Calling executeCadQuery...");
       // Execute CadQuery code and get STL blob
       const stlBlob = await executeCadQuery(candidateCode);
+      
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -178,7 +249,10 @@ export default function App() {
       console.log("✅ handleUpdateCandidateFromCode completed successfully");
     } catch (err) {
       console.error("❌ Error in handleUpdateCandidateFromCode:", err);
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
+      showError(`Failed to update candidate from CadQuery code: ${err.message}`);
     } finally {
       setIsLoading(false);
       setLoadingLabel("");
@@ -188,22 +262,39 @@ export default function App() {
   async function handleGenerateGtFromCode() {
     if (!gtCode.trim()) {
       setStatus("Please enter CadQuery code.");
+      showError("Please enter CadQuery code for the ground truth.");
       return;
     }
     
     setIsLoading(true);
     setLoadingLabel("Generating GT from CadQuery code...");
     
+    // Timer to show warning banner for long operations
+    let exportWarningTimer = setTimeout(() => {
+      setLoadingLabel("Exporting to STL...");
+      showError("STL export is taking longer than expected. This is normal for complex models.");
+    }, 3000);
+    
+    let slowExportTimer = setTimeout(() => {
+      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
+    }, 8000);
+    
     try {
       // Execute CadQuery code and get STL blob
       const stlBlob = await executeCadQuery(gtCode);
+      
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       
       // Create a File from the blob
       const codeFile = new File([stlBlob], `gt_cadquery.stl`, { type: 'model/stl' });
       setGtGeneratedFile(codeFile);
       setStatus(`✓ GT generated from CadQuery code`);
     } catch (err) {
+      clearTimeout(exportWarningTimer);
+      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
+      showError(`Failed to generate GT from CadQuery code: ${err.message}`);
     } finally {
       setIsLoading(false);
       setLoadingLabel("");
@@ -217,6 +308,7 @@ export default function App() {
     
     if (!hasGT || !hasCandidate) {
       setStatus("Please provide both GT and candidate.");
+      showError("Please provide both ground truth and candidate files.");
       return;
     }
 
@@ -228,7 +320,9 @@ export default function App() {
         weights.bbox +
         weights.maxdist;
 
-      setStatus(`Weight sum must equal 1.0. Current total = ${total.toFixed(3)}`);
+      const errorMsg = `Weight sum must equal 1.0. Current total = ${total.toFixed(3)}`;
+      setStatus(errorMsg);
+      showError(errorMsg);
       return;
     }
 
@@ -237,12 +331,28 @@ export default function App() {
     setLoadingLabel("Calculating similarity");
     setResult(null);
 
+    let exportWarningTimer = null;
+    let slowExportTimer = null;
+
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
       if (gtMode === 'code' && gtCode.trim()) {
         setLoadingLabel("Executing GT CadQuery code...");
+        
+        exportWarningTimer = setTimeout(() => {
+          setLoadingLabel("Exporting GT to STL...");
+          showError("STL export is taking longer than expected. This is normal for complex models.");
+        }, 3000);
+        
+        slowExportTimer = setTimeout(() => {
+          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
+        }, 8000);
+        
         gtFileToSend = await executeCadQuery(gtCode);
+        
+        clearTimeout(exportWarningTimer);
+        clearTimeout(slowExportTimer);
       }
 
       // Handle candidate: already a file (could be STL or CadQuery-generated)
@@ -254,7 +364,10 @@ export default function App() {
       setResult(response);
       setStatus("Done!");
     } catch (err) {
+      if (exportWarningTimer) clearTimeout(exportWarningTimer);
+      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(err.message);
+      showError(`Similarity computation failed: ${err.message}`);
     } finally {
       setIsLoading(false);
       setLoadingLabel("");
@@ -268,6 +381,7 @@ export default function App() {
     
     if (!hasGT || !hasCandidate) {
       setStatus("Please provide both GT and candidate.");
+      showError("Please provide both ground truth and candidate files for alignment.");
       return;
     }
 
@@ -275,14 +389,31 @@ export default function App() {
     setIsLoading(true);
     setLoadingLabel("Aligning models");
     
+    let exportWarningTimer = null;
+    let slowExportTimer = null;
+    
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
       if (gtMode === 'code' && gtCode.trim()) {
         setLoadingLabel("Executing GT CadQuery code...");
+        
+        exportWarningTimer = setTimeout(() => {
+          setLoadingLabel("Exporting GT to STL...");
+          showError("STL export is taking longer than expected. This is normal for complex models.");
+        }, 3000);
+        
+        slowExportTimer = setTimeout(() => {
+          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
+        }, 8000);
+        
         gtFileToSend = await executeCadQuery(gtCode);
+        
+        clearTimeout(exportWarningTimer);
+        clearTimeout(slowExportTimer);
       }
 
+      setLoadingLabel("Aligning models");
       const alignResult = await computeAlignment(gtFileToSend, fileB);
       console.log("📍 Alignment result:", alignResult);
       console.log("🎯 Worst discrepancy point:", alignResult.worstDiscrepancyPoint);
@@ -309,7 +440,10 @@ export default function App() {
       
       setStatus("Models aligned!");
     } catch (err) {
+      if (exportWarningTimer) clearTimeout(exportWarningTimer);
+      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(`Alignment error: ${err.message}`);
+      showError(`Alignment failed: ${err.message}`);
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -319,6 +453,21 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {/* Error/Info Banner */}
+      {error && (
+        <div className={`error-banner ${error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'info-banner' : ''}`}>
+          <div className="error-content">
+            <span className="error-icon">
+              {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? '💡' : '⚠️'}
+            </span>
+            <span className="error-message">{error.message}</span>
+            <button className="error-dismiss" onClick={dismissError} title="Dismiss">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="app-header">
         <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>
         <p className="app-subtitle">Upload, overlay, tune weights, and measure alignment quality.</p>
@@ -669,7 +818,9 @@ export default function App() {
                     <span />
                     <span />
                   </div>
-                  <span className="loading-text">{loadingLabel || "Processing"}</span>
+                  <span className="loading-text">
+                    {loadingLabel || "Processing"}
+                  </span>
                 </div>
               )}
               <p className="status-text">{status}</p>

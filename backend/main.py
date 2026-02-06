@@ -1,6 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, Form, Body
+from fastapi import FastAPI, File, UploadFile, Form, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 import json
 from fastapi import UploadFile, File
 from io import BytesIO
@@ -83,10 +83,16 @@ async def align(
         }
 
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e),
-        }
+        print(f"❌ ERROR in /align endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+            }
+        )
 
 
 @app.post("/cadquery")
@@ -105,7 +111,10 @@ async def cadquery_execute(payload: dict = Body(...)):
         
         if not code:
             print("❌ No code provided in payload")
-            return {"error": "No code provided"}
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No code provided", "message": "No code provided"}
+            )
         
         print(f"✅ Code received, length: {len(code)} characters")
         print(f"📝 Code preview:\n{code[:200]}...")
@@ -129,7 +138,10 @@ async def cadquery_execute(payload: dict = Body(...)):
         print(f"❌ ERROR in /cadquery endpoint: {str(e)}")
         import traceback
         traceback.print_exc()
-        return {
-            "status": "error",
-            "message": str(e),
-        }
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+            }
+        )
