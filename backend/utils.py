@@ -4,6 +4,7 @@ import cadquery as cq
 from io import BytesIO
 import tempfile
 import os
+import time
 
 
 def safe_sample(mesh, n_points, label="mesh"):
@@ -105,6 +106,7 @@ def execute_cadquery_script(script: str) -> bytes:
         
         # Export to STL using temporary file
         print("[INFO] Exporting to STL...")
+        export_start = time.perf_counter()
         
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='wb', suffix='.stl', delete=False) as tmp_file:
@@ -113,12 +115,18 @@ def execute_cadquery_script(script: str) -> bytes:
         try:
             # Export to the temporary file
             cq.exporters.export(obj, tmp_path, "STL")
+            export_time = time.perf_counter() - export_start
             
             # Read the STL bytes
             with open(tmp_path, 'rb') as f:
                 stl_bytes = f.read()
             
-            print(f"[INFO] STL export successful, size: {len(stl_bytes)} bytes")
+            print(f"[INFO] STL export successful in {export_time:.2f}s, size: {len(stl_bytes)} bytes")
+            
+            # Warn if export took a long time
+            if export_time > 5.0:
+                print(f"[WARNING] STL export took {export_time:.2f}s - consider using CQ-Editor for complex models")
+            
             return stl_bytes
             
         finally:

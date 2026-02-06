@@ -40,10 +40,25 @@ export async function computeSimilarity(fileA, fileB, weights, sharpness) {
   if (!res.ok) {
     const msg = await res.text();
     console.error("❌ API error:", res.status, msg);
-    throw new Error("API error: " + msg);
+    
+    // Try to parse error message from backend JSON
+    try {
+      const errorJson = JSON.parse(msg);
+      const errorMessage = errorJson.message || errorJson.error || msg;
+      throw new Error(`Backend error (${res.status}): ${errorMessage}`);
+    } catch (parseError) {
+      throw new Error(`Backend error (${res.status}): ${msg}`);
+    }
   }
 
   const json = await res.json();
+  
+  // Check if the response contains an error even with 200 status
+  if (json.error) {
+    console.error("❌ Similarity returned error:", json);
+    throw new Error(`Similarity computation failed: ${json.error}`);
+  }
+  
   console.info("✅ computeSimilarity response:", json);
   return json;
 }
@@ -63,10 +78,25 @@ export async function computeAlignment(fileA, fileB) {
   if (!res.ok) {
     const msg = await res.text();
     console.error("❌ Align API error:", res.status, msg);
-    throw new Error("Align API error: " + msg);
+    
+    // Try to parse error message from backend JSON
+    try {
+      const errorJson = JSON.parse(msg);
+      const errorMessage = errorJson.message || errorJson.error || msg;
+      throw new Error(`Alignment error (${res.status}): ${errorMessage}`);
+    } catch (parseError) {
+      throw new Error(`Alignment error (${res.status}): ${msg}`);
+    }
   }
 
   const json = await res.json();
+  
+  // Check if the response contains an error even with 200 status
+  if (json.status === "error") {
+    console.error("❌ Alignment returned error:", json);
+    throw new Error(`Alignment failed: ${json.message || "Unknown error"}`);
+  }
+  
   console.info("✅ computeAlignment response:", json);
   return json;
 }
@@ -86,10 +116,30 @@ export async function executeCadQuery(code) {
     console.info("📡 Response status:", res.status);
     console.info("📡 Response headers:", Object.fromEntries(res.headers.entries()));
 
+    // Check content type to determine if it's an error or STL
+    const contentType = res.headers.get("content-type");
+    console.info("📡 Content-Type:", contentType);
+
     if (!res.ok) {
       const msg = await res.text();
       console.error("❌ CadQuery API error:", res.status, msg);
-      throw new Error("CadQuery API error: " + msg);
+      
+      // Try to parse error message from backend JSON
+      try {
+        const errorJson = JSON.parse(msg);
+        const errorMessage = errorJson.message || errorJson.error || msg;
+        throw new Error(`CadQuery error (${res.status}): ${errorMessage}`);
+      } catch (parseError) {
+        throw new Error(`CadQuery error (${res.status}): ${msg}`);
+      }
+    }
+
+    // Check if response is JSON (error) even with 200 status
+    if (contentType && contentType.includes("application/json")) {
+      const errorJson = await res.json();
+      console.error("❌ CadQuery returned error:", errorJson);
+      const errorMessage = errorJson.message || errorJson.error || "Unknown CadQuery error";
+      throw new Error(`CadQuery execution failed: ${errorMessage}`);
     }
 
     // Response should be STL file bytes
