@@ -1,5 +1,9 @@
 import numpy as np
 import trimesh
+import cadquery as cq
+from io import BytesIO
+import tempfile
+import os
 
 
 def safe_sample(mesh, n_points, label="mesh"):
@@ -34,3 +38,94 @@ def safe_sample(mesh, n_points, label="mesh"):
             return mesh.vertices
         except Exception:
             raise
+
+
+def to_solid(obj):
+    """Convert CadQuery object to a solid/compound."""
+    if isinstance(obj, cq.Workplane):
+        obj = obj.val()
+    
+    if isinstance(obj, (cq.Solid, cq.Compound)):
+        return obj
+    
+    if isinstance(obj, cq.Assembly):
+        # Extract all solids from assembly
+        shapes = []
+        for _, item in obj.traverse():
+            if item.shapes:
+                shapes.extend(item.shapes)
+        if shapes:
+            return cq.Compound.makeCompound(shapes)
+    
+    raise ValueError(f"Cannot convert {type(obj)} to solid")
+
+
+def execute_cadquery_script(script: str) -> bytes:
+    """
+    Executes the provided CadQuery script via exec() and returns the STL bytes.
+    The script should produce a 'result' variable or the last CadQuery object will be used.
+    """
+    env = {"__builtins__": __builtins__, "cq": cq}
+    
+    try:
+        print("[CadQuery] Executing script:")
+        print(script)
+        exec(script, env, env)
+
+        # Capture resulting cadquery object
+        obj = None
+        if "result" in env:
+            obj = env["result"]
+            print("[INFO] Using 'result' variable")
+        else:
+            # If cq object is not named 'result', try to find the last cq object
+            for last_key, last_value in reversed(env.items()):
+                if isinstance(last_value, cq.Workplane):
+                    obj = last_value
+                    print(f"[INFO] Using last key '{last_key}' as result (Workplane)")
+                    break
+                elif isinstance(last_value, cq.Assembly):
+                    obj = last_value
+                    print(f"[INFO] Using last key '{last_key}' as result (Assembly)")
+                    break
+                elif isinstance(last_value, cq.Compound):
+                    obj = last_value
+                    print(f"[INFO] Using last key '{last_key}' as result (Compound)")
+                    break
+                elif isinstance(last_value, cq.Solid):
+                    obj = last_value
+                    print(f"[INFO] Using last key '{last_key}' as result (Solid)")
+                    break
+        
+        if obj is None:
+            raise ValueError("The script did not produce a 'result' variable or any CadQuery object.")
+        
+        # Convert to solid
+        obj = to_solid(obj)
+        
+        # Export to STL using temporary file
+        print("[INFO] Exporting to STL...")
+        
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.stl', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+        
+        try:
+            # Export to the temporary file
+            cq.exporters.export(obj, tmp_path, "STL")
+            
+            # Read the STL bytes
+            with open(tmp_path, 'rb') as f:
+                stl_bytes = f.read()
+            
+            print(f"[INFO] STL export successful, size: {len(stl_bytes)} bytes")
+            return stl_bytes
+            
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        
+    except Exception as e:
+        print(f"[ERROR] CadQuery execution failed: {str(e)}")
+        raise ValueError(f"CadQuery execution error: {str(e)}")

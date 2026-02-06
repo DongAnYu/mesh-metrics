@@ -19,6 +19,7 @@ function getBackendBase() {
 const BACKEND_BASE = getBackendBase();
 const BACKEND_URL = `${BACKEND_BASE}/compare`;
 const BACKEND_ALIGN = `${BACKEND_BASE}/align`;
+const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
 
 console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
 
@@ -68,4 +69,35 @@ export async function computeAlignment(fileA, fileB) {
   const json = await res.json();
   console.info("✅ computeAlignment response:", json);
   return json;
+}
+
+export async function executeCadQuery(code) {
+  console.info("📤 Calling executeCadQuery:", BACKEND_CADQUERY);
+  
+  try {
+    const res = await fetch(BACKEND_CADQUERY, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    console.info("📡 Response status:", res.status);
+    console.info("📡 Response headers:", Object.fromEntries(res.headers.entries()));
+
+    if (!res.ok) {
+      const msg = await res.text();
+      console.error("❌ CadQuery API error:", res.status, msg);
+      throw new Error("CadQuery API error: " + msg);
+    }
+
+    // Response should be STL file bytes
+    const blob = await res.blob();
+    console.info("✅ executeCadQuery response: STL file received, size:", blob.size, "bytes");
+    return blob;
+  } catch (error) {
+    console.error("❌ executeCadQuery failed:", error);
+    throw error;
+  }
 }

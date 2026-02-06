@@ -28,6 +28,72 @@ const COLOR_SCHEMES = {
   }
 };
 
+// Arrow component to indicate worst discrepancy point
+function DiscrepancyArrow({ position, diagonal }) {
+  const arrowRef = useRef();
+  const [time, setTime] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setTime(t => t + 0.1), 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate size based on diagonal - make arrow 2% of model size
+  const arrowScale = diagonal ? diagonal * 0.02 : 1; // 2% of diagonal
+
+  // Pulsing animation
+  const pulseScale = 1 + 0.3 * Math.sin(time * 2);
+  const arrowColor = new THREE.Color(0xff0000); // Bright red
+
+  console.log("🎯 DiscrepancyArrow rendering - position:", position, "diagonal:", diagonal, "arrowScale:", arrowScale);
+
+  return (
+    <group ref={arrowRef} position={position}>
+      {/* Small glowing sphere - main indicator (2% of diagonal) */}
+      <mesh scale={pulseScale}>
+        <sphereGeometry args={[arrowScale * 0.4, 32, 32]} />
+        <meshBasicMaterial 
+          color={arrowColor}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+      
+      {/* Subtle outer glow sphere */}
+      <mesh scale={pulseScale * 1.3}>
+        <sphereGeometry args={[arrowScale * 0.4, 32, 32]} />
+        <meshBasicMaterial 
+          color={arrowColor}
+          transparent
+          opacity={0.2}
+        />
+      </mesh>
+      
+      {/* Arrow pointing down from above */}
+      <mesh position={[0, arrowScale * 2, 0]}>
+        <cylinderGeometry args={[arrowScale * 0.08, arrowScale * 0.08, arrowScale * 3, 16]} />
+        <meshBasicMaterial color={arrowColor} />
+      </mesh>
+      
+      {/* Cone arrow head */}
+      <mesh position={[0, arrowScale * 0.5, 0]} rotation={[Math.PI, 0, 0]}>
+        <coneGeometry args={[arrowScale * 0.3, arrowScale * 0.8, 16]} />
+        <meshBasicMaterial color={arrowColor} />
+      </mesh>
+      
+      {/* Thin pulsing ring for extra visibility */}
+      <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]} scale={pulseScale}>
+        <torusGeometry args={[arrowScale * 0.5, arrowScale * 0.05, 16, 32]} />
+        <meshBasicMaterial 
+          color={arrowColor}
+          transparent
+          opacity={0.6}
+        />
+      </mesh>
+    </group>
+  );
+}
+
 
 function Model({ url, color, animating, phase, matrix, centroid }) {
   const groupRef = useRef();
@@ -169,7 +235,7 @@ function Model({ url, color, animating, phase, matrix, centroid }) {
   );
 }
 
-export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, onAlign, isLoading, loadingLabel }) {
+export default function VisualCompare({ fileA, fileB, transformB, centroidA, centroidB, worstDiscrepancyPoint, sceneDiagonal, onAlign, isLoading, loadingLabel }) {
   const [urlA, setUrlA] = useState(null);
   const [urlB, setUrlB] = useState(null);
   const [colorScheme, setColorScheme] = useState("green-magenta");
@@ -178,6 +244,12 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
   const [animating, setAnimating] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
   const [alignStatus, setAlignStatus] = useState("");
+  const [showDiscrepancyArrow, setShowDiscrepancyArrow] = useState(true);
+
+  useEffect(() => {
+    console.log("🎯 VisualCompare received worstDiscrepancyPoint:", worstDiscrepancyPoint);
+    console.log("🎯 VisualCompare received sceneDiagonal:", sceneDiagonal);
+  }, [worstDiscrepancyPoint, sceneDiagonal]);
 
   useEffect(() => {
     if (fileA) {
@@ -285,13 +357,28 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
             )}
           </button>
           {transformB && (
-            <button
-              onClick={() => setShowRaw(!showRaw)}
-              className={`control-button ${showRaw ? "active" : ""}`}
-              style={{ flex: 1 }}
-            >
-              {showRaw ? "Show Aligned" : "Show Raw"}
-            </button>
+            <>
+              <button
+                onClick={() => setShowRaw(!showRaw)}
+                className={`control-button ${showRaw ? "active" : ""}`}
+                style={{ flex: 1 }}
+              >
+                {showRaw ? "Show Aligned" : "Show Raw"}
+              </button>
+              {worstDiscrepancyPoint && !showRaw && (
+                <>
+                  {console.log("🎯 Showing arrow toggle button. worstDiscrepancyPoint:", worstDiscrepancyPoint, "showRaw:", showRaw)}
+                  <button
+                    onClick={() => setShowDiscrepancyArrow(!showDiscrepancyArrow)}
+                    className={`control-button ${showDiscrepancyArrow ? "active" : ""}`}
+                    style={{ flex: 1 }}
+                    title="Toggle discrepancy indicator"
+                  >
+                    {showDiscrepancyArrow ? "🎯 Hide Arrow" : "🎯 Show Arrow"}
+                  </button>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -360,6 +447,17 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
                 centroid={centroidB} 
               />
             )}
+            
+            {/* Show discrepancy arrow when aligned and not in raw mode */}
+            {worstDiscrepancyPoint && !showRaw && showDiscrepancyArrow && sceneDiagonal && (
+              <>
+                {console.log("🎯 Rendering DiscrepancyArrow at position:", worstDiscrepancyPoint, "diagonal:", sceneDiagonal)}
+                <DiscrepancyArrow 
+                  position={worstDiscrepancyPoint}
+                  diagonal={sceneDiagonal}
+                />
+              </>
+            )}
           </Canvas>
         ) : (
           <div className="visual-compare-placeholder">
@@ -377,14 +475,16 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
             <li>Adjust opacity to see through overlapping areas</li>
             <li>Use "Animate" to flash between models and spot differences</li>
             <li>Toggle individual models on/off to isolate features</li>
+            {worstDiscrepancyPoint && <li>🎯 Red arrow points to the largest discrepancy after alignment</li>}
           </ul>
         </div>
         <div className="info-box">
           <strong>🎨 Understanding the colors:</strong>
           <ul>
-            <li>Pure colors = unique features in each model</li>
-            <li>Mixed/blended colors = overlapping geometry</li>
-            <li>Gray areas (if visible) = perfectly aligned surfaces</li>
+            <li>Pure colors: unique features in each model</li>
+            <li>Mixed/blended colors: overlapping geometry</li>
+            <li>Gray areas (if visible): perfectly aligned surfaces</li>
+            {worstDiscrepancyPoint && <li>🔴 Red arrow: area needs the most attention (potential huge discrepancy)</li>}
           </ul>
         </div>
       </div>
