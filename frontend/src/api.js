@@ -16,7 +16,6 @@ function getBackendBase() {
   return RAILWAY_BACKEND;
 }
 
-<<<<<<< HEAD
 // ── Automatic Railway → Render fallback ─────────────────────────
 // If the request targets Railway and fails (network error OR HTTP 5xx),
 // retry the same request against Render once.
@@ -51,11 +50,6 @@ async function fetchWithFallback(url, options) {
 const BACKEND_BASE    = getBackendBase();
 const BACKEND_URL     = `${BACKEND_BASE}/compare`;
 const BACKEND_ALIGN   = `${BACKEND_BASE}/align`;
-=======
-const BACKEND_BASE = getBackendBase();
-const BACKEND_URL = `${BACKEND_BASE}/compare`;
-const BACKEND_ALIGN = `${BACKEND_BASE}/align`;
->>>>>>> db3d57bc5c95611f64eab98e84d8248f025728fb
 const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
 
 console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
@@ -142,11 +136,7 @@ export async function executeCadQuery(code) {
   console.info("📤 Calling executeCadQuery:", BACKEND_CADQUERY);
   
   try {
-<<<<<<< HEAD
     const res = await fetchWithFallback(BACKEND_CADQUERY, {
-=======
-    const res = await fetch(BACKEND_CADQUERY, {
->>>>>>> db3d57bc5c95611f64eab98e84d8248f025728fb
       method: "POST",
       headers: {
         "Content-Type": "application/json",
