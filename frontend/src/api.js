@@ -16,6 +16,7 @@ function getBackendBase() {
   return RAILWAY_BACKEND;
 }
 
+<<<<<<< HEAD
 // ── Automatic Railway → Render fallback ─────────────────────────
 // If the request targets Railway and fails (network error OR HTTP 5xx),
 // retry the same request against Render once.
@@ -50,6 +51,11 @@ async function fetchWithFallback(url, options) {
 const BACKEND_BASE    = getBackendBase();
 const BACKEND_URL     = `${BACKEND_BASE}/compare`;
 const BACKEND_ALIGN   = `${BACKEND_BASE}/align`;
+=======
+const BACKEND_BASE = getBackendBase();
+const BACKEND_URL = `${BACKEND_BASE}/compare`;
+const BACKEND_ALIGN = `${BACKEND_BASE}/align`;
+>>>>>>> db3d57bc5c95611f64eab98e84d8248f025728fb
 const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
 
 console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
@@ -71,10 +77,25 @@ export async function computeSimilarity(fileA, fileB, weights, sharpness) {
   if (!res.ok) {
     const msg = await res.text();
     console.error("❌ API error:", res.status, msg);
-    throw new Error("API error: " + msg);
+    
+    // Try to parse error message from backend JSON
+    try {
+      const errorJson = JSON.parse(msg);
+      const errorMessage = errorJson.message || errorJson.error || msg;
+      throw new Error(`Backend error (${res.status}): ${errorMessage}`);
+    } catch (parseError) {
+      throw new Error(`Backend error (${res.status}): ${msg}`);
+    }
   }
 
   const json = await res.json();
+  
+  // Check if the response contains an error even with 200 status
+  if (json.error) {
+    console.error("❌ Similarity returned error:", json);
+    throw new Error(`Similarity computation failed: ${json.error}`);
+  }
+  
   console.info("✅ computeSimilarity response:", json);
   return json;
 }
@@ -94,10 +115,25 @@ export async function computeAlignment(fileA, fileB) {
   if (!res.ok) {
     const msg = await res.text();
     console.error("❌ Align API error:", res.status, msg);
-    throw new Error("Align API error: " + msg);
+    
+    // Try to parse error message from backend JSON
+    try {
+      const errorJson = JSON.parse(msg);
+      const errorMessage = errorJson.message || errorJson.error || msg;
+      throw new Error(`Alignment error (${res.status}): ${errorMessage}`);
+    } catch (parseError) {
+      throw new Error(`Alignment error (${res.status}): ${msg}`);
+    }
   }
 
   const json = await res.json();
+  
+  // Check if the response contains an error even with 200 status
+  if (json.status === "error") {
+    console.error("❌ Alignment returned error:", json);
+    throw new Error(`Alignment failed: ${json.message || "Unknown error"}`);
+  }
+  
   console.info("✅ computeAlignment response:", json);
   return json;
 }
@@ -106,7 +142,11 @@ export async function executeCadQuery(code) {
   console.info("📤 Calling executeCadQuery:", BACKEND_CADQUERY);
   
   try {
+<<<<<<< HEAD
     const res = await fetchWithFallback(BACKEND_CADQUERY, {
+=======
+    const res = await fetch(BACKEND_CADQUERY, {
+>>>>>>> db3d57bc5c95611f64eab98e84d8248f025728fb
       method: "POST",
       headers: {
         "Content-Type": "application/json",

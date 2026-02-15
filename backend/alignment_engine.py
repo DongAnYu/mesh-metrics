@@ -248,6 +248,10 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         best_candidate_max = float('inf')
         best_candidate_similarity = -float('inf')
 
+        best_worst_point = None
+        best_worst_point_meshB = None
+        best_discrepancy_points = []  # List of points exceeding threshold
+        
         for name, transform in candidate_transforms:
             # 1. Apply transform to meshB
             meshB_transformed = meshB.copy()
@@ -257,8 +261,65 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
             np.random.seed(config.EVAL_RANDOM_SEED)
             PB_eval = safe_sample(meshB_transformed, config.EVAL_SAMPLE_COUNT, label=f"PB_eval_{name}")
             
-            # 3. Compute chamfer (bi-directional)
-            chamfer_eval, max_eval = chamfer_distance(PA_eval, PB_eval)
+            # 3. Compute chamfer (bi-directional) and find worst discrepancy point
+            kdtA = cKDTree(PA_eval)
+            kdtB = cKDTree(PB_eval)
+            d1, idx1 = kdtA.query(PB_eval)  # distances from B to A
+            d2, idx2 = kdtB.query(PA_eval)  # distances from A to B
+            
+            # Calculate threshold based on diagonal (relative threshold)
+            threshold_distance = diag * config.DISCREPANCY_THRESHOLD_FRACTION
+            min_arrow_distance = diag * config.MIN_ARROW_DISTANCE_FRACTION
+            
+            print(f"🎯 Diagonal: {diag:.6f}")
+            print(f"🎯 Threshold distance (absolute): {threshold_distance:.6f} ({config.DISCREPANCY_THRESHOLD_FRACTION*100:.1f}% of diagonal)")
+            print(f"🎯 Min arrow distance: {min_arrow_distance:.6f} ({config.MIN_ARROW_DISTANCE_FRACTION*100:.2f}% of diagonal)")
+            
+            # Find the point with maximum distance (single worst)
+            max_d1_idx = np.argmax(d1)
+            max_d2_idx = np.argmax(d2)
+            
+            if d1[max_d1_idx] > d2[max_d2_idx]:
+                worst_point = PB_eval[max_d1_idx]  # point on B that's farthest from A
+                worst_point_meshB = PB_eval[max_d1_idx]
+                max_eval = d1[max_d1_idx]
+            else:
+                worst_point = PA_eval[max_d2_idx]  # point on A that's farthest from B
+                worst_point_meshB = PB_eval[idx2[max_d2_idx]]  # closest point on B
+                max_eval = d2[max_d2_idx]
+            
+            print(f"🎯 Max discrepancy distance: {max_eval:.6f} ({max_eval/diag*100:.2f}% of diagonal)")
+            
+            # Find ALL points exceeding threshold
+            discrepancy_points = []
+            
+            # Points from B with high distance to A
+            exceeding_b = np.where(d1 > threshold_distance)[0]
+            for idx in exceeding_b[:config.MAX_DISCREPANCY_POINTS]:
+                discrepancy_points.append({
+                    "position": PB_eval[idx].tolist(),
+                    "distance": float(d1[idx]),
+                    "normalized_distance": float(d1[idx] / diag),
+                    "source": "B"
+                })
+            
+            # Points from A with high distance to B
+            exceeding_a = np.where(d2 > threshold_distance)[0]
+            for idx in exceeding_a[:config.MAX_DISCREPANCY_POINTS]:
+                discrepancy_points.append({
+                    "position": PA_eval[idx].tolist(),
+                    "distance": float(d2[idx]),
+                    "normalized_distance": float(d2[idx] / diag),
+                    "source": "A"
+                })
+            
+            # Sort by distance (worst first) and limit count
+            discrepancy_points.sort(key=lambda x: x["distance"], reverse=True)
+            discrepancy_points = discrepancy_points[:config.MAX_DISCREPANCY_POINTS]
+            
+            print(f"🎯 Found {len(discrepancy_points)} points exceeding threshold")
+            
+            chamfer_eval = float(np.mean(d1) + np.mean(d2))
             
             # 4. Normalize by diagonal
             chamfer_normalized = float(chamfer_eval) / float(diag)
@@ -267,7 +328,7 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
             # 5. Convert → similarity_exponential
             similarity_score = similarity_exponential(chamfer_normalized, S["chamfer"])
             
-            print(f"Candidate {name}: chamfer={chamfer_eval:.6f}, similarity={similarity_score:.6f}")
+            print(f"Candidate {name}: chamfer={chamfer_eval:.6f}, similarity={similarity_score:.6f}, worst_point={worst_point}")
             
             # Pick the transform with the higher similarity
             if similarity_score > best_candidate_similarity:
@@ -276,6 +337,18 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
                 best_candidate_chamfer = chamfer_eval
                 best_candidate_max = max_eval
                 best_candidate_similarity = similarity_score
+                
+                # Only set worst point if it exceeds minimum arrow distance
+                if max_eval > min_arrow_distance:
+                    best_worst_point = [float(x) for x in worst_point]
+                    best_worst_point_meshB = [float(x) for x in worst_point_meshB]
+                else:
+                    best_worst_point = None  # Too small to show arrow
+                    best_worst_point_meshB = None
+                    print(f"🎯 Max distance {max_eval:.6f} below minimum {min_arrow_distance:.6f}, not showing arrow")
+                
+                best_discrepancy_points = discrepancy_points
+                print(f"🎯 Updated best worst point: {best_worst_point}")
 
         timings["candidate_eval"] = time.perf_counter() - t_eval
 
@@ -309,6 +382,14 @@ def compute_alignment(meshA, meshB, user_sharpness=None):
         "maxdist_after": float(best_max),
         "rotation_radians": [float(a) for a in best_angles],
         "timings": timings,
+        "worstDiscrepancyPoint": best_worst_point,
+        "worstDiscrepancyPointMeshB": best_worst_point_meshB,
+        "discrepancyPoints": best_discrepancy_points,  # All points exceeding threshold
+        "diagonal": float(diag),  # Scene diagonal for reference
+        "thresholdDistance": float(diag * config.DISCREPANCY_THRESHOLD_FRACTION),  # Absolute threshold used
+        "thresholdFraction": config.DISCREPANCY_THRESHOLD_FRACTION,  # Relative threshold (e.g., 0.02 = 2%)
     }
 
+    print(f"🎯 Final result worstDiscrepancyPoint: {best_worst_point}")
+    print(f"🎯 Total discrepancy points exceeding threshold: {len(best_discrepancy_points)}")
     return result
