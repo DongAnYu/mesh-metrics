@@ -1,24 +1,56 @@
-// Auto-detect backend based on frontend environment
+// ── Backend targets ──────────────────────────────────────────────
+const RAILWAY_BACKEND = "https://mesh-metrics-production.up.railway.app";
+const RENDER_BACKEND  = "https://mesh-metrics.onrender.com";
+const LOCAL_BACKEND   = "http://localhost:8000";
+
+// ── Pick primary backend based on where the frontend is running ─
 function getBackendBase() {
   const hostname = window.location.hostname;
-  
-  // Production: mesh-metrics.vercel.app → use Render backend
-  if (hostname.includes("vercel.app") || hostname.includes("mesh-metrics.com")) {
-    return "https://mesh-metrics.onrender.com";
-  }
-  
-  // Development: localhost:5173 or localhost:3000 → use local backend
+
+  // Local development → local backend (no fallback needed)
   if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return "http://localhost:8000";
+    return LOCAL_BACKEND;
   }
-  
-  // Fallback: assume production
-  return "https://mesh-metrics.onrender.com";
+
+  // Production (Vercel / custom domain / anything else) → Railway first
+  return RAILWAY_BACKEND;
 }
 
-const BACKEND_BASE = getBackendBase();
-const BACKEND_URL = `${BACKEND_BASE}/compare`;
-const BACKEND_ALIGN = `${BACKEND_BASE}/align`;
+// ── Automatic Railway → Render fallback ─────────────────────────
+// If the request targets Railway and fails (network error OR HTTP 5xx),
+// retry the same request against Render once.
+async function fetchWithFallback(url, options) {
+  try {
+    const res = await fetch(url, options);
+
+    // Railway responded but with a server error → fall back
+    if (!res.ok && url.includes("railway.app")) {
+      throw new Error(`Railway returned ${res.status}`);
+    }
+
+    return res;
+  } catch (err) {
+    // Only fall back when the original target was Railway
+    if (url.includes("railway.app")) {
+      console.warn("⚠️ Railway unavailable, falling back to Render:", err.message);
+
+      const fallbackUrl = url.replace(
+        "mesh-metrics-production.up.railway.app",
+        "mesh-metrics.onrender.com"
+      );
+
+      return fetch(fallbackUrl, options);
+    }
+
+    // Local or other host — no fallback, just re-throw
+    throw err;
+  }
+}
+
+const BACKEND_BASE    = getBackendBase();
+const BACKEND_URL     = `${BACKEND_BASE}/compare`;
+const BACKEND_ALIGN   = `${BACKEND_BASE}/align`;
+const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
 
 console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
 
@@ -30,10 +62,10 @@ export async function computeSimilarity(fileA, fileB, weights, sharpness) {
   form.append("sharpness", JSON.stringify(sharpness));
 
   console.info("📤 Calling computeSimilarity:", BACKEND_URL);
-  
-  const res = await fetch(BACKEND_URL, {
+
+  const res = await fetchWithFallback(BACKEND_URL, {
     method: "POST",
-    body: form
+    body: form,
   });
 
   if (!res.ok) {
@@ -53,8 +85,8 @@ export async function computeAlignment(fileA, fileB) {
   form.append("fileB", fileB);
 
   console.info("📤 Calling computeAlignment:", BACKEND_ALIGN);
-  
-  const res = await fetch(BACKEND_ALIGN, {
+
+  const res = await fetchWithFallback(BACKEND_ALIGN, {
     method: "POST",
     body: form,
   });
@@ -68,4 +100,55 @@ export async function computeAlignment(fileA, fileB) {
   const json = await res.json();
   console.info("✅ computeAlignment response:", json);
   return json;
+}
+
+export async function executeCadQuery(code) {
+  console.info("📤 Calling executeCadQuery:", BACKEND_CADQUERY);
+  
+  try {
+    const res = await fetchWithFallback(BACKEND_CADQUERY, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    console.info("📡 Response status:", res.status);
+    console.info("📡 Response headers:", Object.fromEntries(res.headers.entries()));
+
+    // Check content type to determine if it's an error or STL
+    const contentType = res.headers.get("content-type");
+    console.info("📡 Content-Type:", contentType);
+
+    if (!res.ok) {
+      const msg = await res.text();
+      console.error("❌ CadQuery API error:", res.status, msg);
+      
+      // Try to parse error message from backend JSON
+      try {
+        const errorJson = JSON.parse(msg);
+        const errorMessage = errorJson.message || errorJson.error || msg;
+        throw new Error(`CadQuery error (${res.status}): ${errorMessage}`);
+      } catch (parseError) {
+        throw new Error(`CadQuery error (${res.status}): ${msg}`);
+      }
+    }
+
+    // Check if response is JSON (error) even with 200 status
+    if (contentType && contentType.includes("application/json")) {
+      const errorJson = await res.json();
+      console.error("❌ CadQuery returned error:", errorJson);
+      const errorMessage = errorJson.message || errorJson.error || "Unknown CadQuery error";
+      throw new Error(`CadQuery execution failed: ${errorMessage}`);
+    }
+
+    // Response should be STL file bytes
+    const blob = await res.blob();
+    console.info("✅ executeCadQuery response: STL file received, size:", blob.size, "bytes");
+    return blob;
+  } catch (error) {
+    console.error("❌ executeCadQuery failed:", error);
+    throw error;
+  }
 }
