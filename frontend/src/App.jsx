@@ -468,6 +468,7 @@ export default function App() {
         </div>
       )}
       
+      
       <div className="app-header">
         <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>
         <p className="app-subtitle">Upload, overlay, tune weights, and measure alignment quality.</p>
