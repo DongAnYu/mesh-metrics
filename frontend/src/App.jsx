@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { computeSimilarity, executeCadQuery } from "./api";
+import { computeSimilarity, executeCadQuery, prepareMeshForViewer } from "./api";
 import "./App.css";
 import VisualCompare from "./VisualCompare";
 import { computeAlignment } from "./api";
 
 export default function App() {
+  const ACCEPTED_MODEL_EXTENSIONS = ".stl,.step,.stp";
   const CQEDITOR_HELP_URL = "https://cadquery.readthedocs.io/en/latest/installation.html#adding-a-nicer-gui-via-cq-editor";
   const STL_EXPORT_WARNING_MESSAGE = `STL export is taking longer than expected. This is normal for complex models.
 
@@ -14,6 +15,7 @@ Tips:
 
   // 🟢 Phase 1: New state structure (GT + candidates)
   const [gtFile, setGtFile] = useState(null);
+  const [gtDisplayName, setGtDisplayName] = useState(null);
   const [gtCentroid, setGtCentroid] = useState(null);
   const [worstDiscrepancyPoint, setWorstDiscrepancyPoint] = useState(null);
   const [sceneDiagonal, setSceneDiagonal] = useState(null);
@@ -41,11 +43,12 @@ Tips:
   const [error, setError] = useState(null); // { message: string, timestamp: number }
   
   // Computed values from new state structure
+  const activeCandidate = candidates.find(c => c.id === activeCandidateId) || null;
   const fileA = gtMode === 'file' ? gtFile : gtGeneratedFile;
-  const fileB = candidates.find(c => c.id === activeCandidateId)?.file || null;
-  const alignment = candidates.find(c => c.id === activeCandidateId)?.alignment || null;
+  const fileB = activeCandidate?.file || null;
+  const alignment = activeCandidate?.alignment || null;
   const surfaceCentroidA = gtCentroid;
-  const surfaceCentroidB = candidates.find(c => c.id === activeCandidateId)?.centroid || null;
+  const surfaceCentroidB = activeCandidate?.centroid || null;
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -78,6 +81,25 @@ Tips:
 
   function strictnessToSharpness(strictnessPercent) {
     return 1 + (strictnessPercent / 100) * 19;
+  }
+
+  async function prepareUploadedMesh(file, label = "model") {
+    if (!file) return null;
+
+    setIsLoading(true);
+    setLoadingLabel(`Preparing ${label}`);
+    try {
+      const preparedFile = await prepareMeshForViewer(file);
+      return preparedFile;
+    } catch (err) {
+      const message = err?.message || `Failed to prepare ${label}`;
+      setStatus(message);
+      showError(message);
+      return null;
+    } finally {
+      setIsLoading(false);
+      setLoadingLabel("");
+    }
   }
 
   function getSharpnessFromStrictness() {
@@ -162,6 +184,7 @@ Tips:
           id: newId, 
           file: codeFile, 
           isCadQuery: true,
+          displayName: codeFile.name,
           code: candidateCode // Store the code with the candidate
         }];
         console.log("✅ Candidates updated, new count:", updated.length);
@@ -229,7 +252,7 @@ Tips:
       setCandidates(prev => {
         const updated = prev.map(c => 
           c.id === activeCandidateId 
-            ? { ...c, file: codeFile, code: candidateCode }
+            ? { ...c, file: codeFile, displayName: codeFile.name, code: candidateCode }
             : c
         );
         console.log("✅ Candidate updated");
@@ -460,7 +483,7 @@ Tips:
       
       
       <div className="app-header">
-        <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>
+        <h2 className="app-title">STL/STEP Similarity & Visual Comparison Tool</h2>
         <p className="app-subtitle">Upload, overlay, tune weights, and measure alignment quality.</p>
       </div>
 
@@ -481,7 +504,7 @@ Tips:
                       }
                     }}
                     disabled={gtCode.trim().length > 0}
-                    title={gtCode.trim() ? "Clear CadQuery code first to upload a file" : "Upload STL file"}
+                    title={gtCode.trim() ? "Clear CadQuery code first to upload a file" : "Upload STL or STEP file"}
                   >
                     📁 File
                   </button>
@@ -505,26 +528,29 @@ Tips:
                 <>
                   <input 
                     type="file" 
-                    accept=".stl" 
-                    onChange={(e) => {
+                    accept={ACCEPTED_MODEL_EXTENSIONS}
+                    onChange={async (e) => {
                       const file = e.target.files[0];
-                      setGtFile(file);
+                      const preparedFile = await prepareUploadedMesh(file, "ground-truth model");
+                      if (!preparedFile) return;
+
+                      setGtFile(preparedFile);
+                      setGtDisplayName(file.name);
                       // Clear generated file if switching to upload
-                      if (file) {
-                        setGtGeneratedFile(null);
-                        setGtCode('');
-                      }
+                      setGtGeneratedFile(null);
+                      setGtCode('');
                     }} 
                     className="file-input" 
                   />
                   {(gtFile || gtGeneratedFile) && (
                     <div className="file-name-row">
-                      <p className="file-name">✓ {gtFile?.name || "Generated from CadQuery"}</p>
+                      <p className="file-name">✓ {gtDisplayName || gtFile?.name || "Generated from CadQuery"}</p>
                       <button 
                         className="clear-file-button"
                         onClick={() => {
                           setGtFile(null);
                           setGtGeneratedFile(null);
+                          setGtDisplayName(null);
                         }}
                         title="Clear file"
                       >
@@ -592,9 +618,9 @@ Tips:
               {/* Show active candidate info */}
               {fileB && (
                 <p className="file-name">
-                  Active: {fileB.name}
-                  {candidates.find(c => c.id === activeCandidateId)?.isCadQuery && 
-                    ` (${candidates.find(c => c.id === activeCandidateId)?.code?.length || 0} chars)`
+                  Active: {activeCandidate?.displayName || fileB.name}
+                  {activeCandidate?.isCadQuery && 
+                    ` (${activeCandidate?.code?.length || 0} chars)`
                   }
                 </p>
               )}
@@ -871,22 +897,25 @@ Tips:
               <label className="modal-option-card">
                 <input
                   type="file"
-                  accept=".stl"
+                  accept={ACCEPTED_MODEL_EXTENSIONS}
                   style={{ display: 'none' }}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files[0];
                     if (file) {
+                      const preparedFile = await prepareUploadedMesh(file, "candidate model");
+                      if (!preparedFile) return;
+
                       const newId = Date.now().toString();
-                      setCandidates(prev => [...prev, { id: newId, file, isCadQuery: false }]);
+                      setCandidates(prev => [...prev, { id: newId, file: preparedFile, isCadQuery: false, displayName: file.name }]);
                       setActiveCandidateId(newId);
                       setShowAddCandidateModal(false);
-                    }
+                      }
                     e.target.value = '';
                   }}
                 />
                 <div className="modal-option-icon">📁</div>
-                <div className="modal-option-title">Upload STL File</div>
-                <div className="modal-option-description">Upload an existing STL file from your computer</div>
+                <div className="modal-option-title">Upload STL/STEP File</div>
+                <div className="modal-option-description">Upload an existing STL/STEP file from your computer</div>
               </label>
               
               {/* CadQuery Code Option */}

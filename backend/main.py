@@ -1,13 +1,10 @@
-from fastapi import FastAPI, File, UploadFile, Form, Body, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 import json
-from fastapi import UploadFile, File
-from io import BytesIO
-import trimesh
 from similarity_engine import compute_similarity
 from alignment_engine import compute_alignment
-from utils import execute_cadquery_script 
+from utils import execute_cadquery_script, load_mesh_from_upload, mesh_to_stl_bytes
 
 app = FastAPI()
 
@@ -35,12 +32,17 @@ async def compare(
         user_sharpness = json.loads(sharpness)
 
     try:
+        bytesA = await fileA.read()
+        bytesB = await fileB.read()
+
         sim = compute_similarity(
-        await fileA.read(),
-        await fileB.read(),
-        user_weights,
-        user_sharpness  
-    )
+            bytesA,
+            bytesB,
+            fileA.filename,
+            fileB.filename,
+            user_weights,
+            user_sharpness,
+        )
         return sim
 
     except ValueError as e:
@@ -53,12 +55,12 @@ async def align(
     fileB: UploadFile = File(...),
 ):
     try:
-        # Load STL bytes
+        # Load mesh bytes (STL / STEP)
         bytesA = await fileA.read()
         bytesB = await fileB.read()
 
-        meshA = trimesh.load(BytesIO(bytesA), file_type="stl")
-        meshB = trimesh.load(BytesIO(bytesB), file_type="stl")
+        meshA = load_mesh_from_upload(bytesA, fileA.filename)
+        meshB = load_mesh_from_upload(bytesB, fileB.filename)
 
         # Compute centroid-based alignment
         result = compute_alignment(meshA, meshB)
@@ -86,6 +88,42 @@ async def align(
         print(f"❌ ERROR in /align endpoint: {str(e)}")
         import traceback
         traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": str(e),
+            }
+        )
+
+
+@app.post("/mesh/prepare")
+async def prepare_mesh(file: UploadFile = File(...)):
+    """
+    Convert STL/STEP upload into a cleaned STL binary for viewer rendering.
+    """
+    try:
+        raw_bytes = await file.read()
+        mesh = load_mesh_from_upload(raw_bytes, file.filename)
+        stl_bytes = mesh_to_stl_bytes(mesh)
+
+        original_name = (file.filename or "model").rsplit(".", 1)[0]
+        return Response(
+            content=stl_bytes,
+            media_type="model/stl",
+            headers={
+                "Content-Disposition": f"attachment; filename={original_name}.stl"
+            }
+        )
+    except ValueError as e:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(e),
+            }
+        )
+    except Exception as e:
         return JSONResponse(
             status_code=500,
             content={
