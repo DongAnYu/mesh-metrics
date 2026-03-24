@@ -5,6 +5,13 @@ import VisualCompare from "./VisualCompare";
 import { computeAlignment } from "./api";
 
 export default function App() {
+  const CQEDITOR_HELP_URL = "https://cadquery.readthedocs.io/en/latest/installation.html#adding-a-nicer-gui-via-cq-editor";
+  const STL_EXPORT_WARNING_MESSAGE = `STL export is taking longer than expected. This is normal for complex models.
+
+Tips:
+- To speed up, export the STL/STEP via CQ-Editor (click the CQ-Editor link).
+`;
+
   // 🟢 Phase 1: New state structure (GT + candidates)
   const [gtFile, setGtFile] = useState(null);
   const [gtCentroid, setGtCentroid] = useState(null);
@@ -63,10 +70,6 @@ export default function App() {
 
   function showError(message) {
     setError({ message, timestamp: Date.now() });
-    // Auto-dismiss after 15 seconds for informational messages (CQ-Editor tips)
-    // or 10 seconds for actual errors
-    const dismissTime = message.includes('CQ-Editor') ? 40000 : 10000;
-    setTimeout(() => setError(null), dismissTime);
   }
 
   function dismissError() {
@@ -134,13 +137,8 @@ export default function App() {
     let exportWarningTimer = null;
     exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 5000); // Show warning after 5 seconds
-    
-    let slowExportTimer = null;
-    slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 10000); // Show recommendation after 10 seconds
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000); // Show warning after 10 seconds
     
     try {
       console.log("🚀 Calling executeCadQuery...");
@@ -149,7 +147,6 @@ export default function App() {
       
       // Clear timers if export completed
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -179,7 +176,6 @@ export default function App() {
     } catch (err) {
       console.error("❌ Error in handleAddCandidateFromCode:", err);
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to execute CadQuery code: ${err.message}`);
     } finally {
@@ -212,12 +208,8 @@ export default function App() {
     // Timer to show warning banner for long operations
     let exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 3000);
-    
-    let slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 8000);
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000);
     
     try {
       console.log("🚀 Calling executeCadQuery...");
@@ -225,7 +217,6 @@ export default function App() {
       const stlBlob = await executeCadQuery(candidateCode);
       
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -250,7 +241,6 @@ export default function App() {
     } catch (err) {
       console.error("❌ Error in handleUpdateCandidateFromCode:", err);
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to update candidate from CadQuery code: ${err.message}`);
     } finally {
@@ -272,19 +262,14 @@ export default function App() {
     // Timer to show warning banner for long operations
     let exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 3000);
-    
-    let slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 8000);
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000);
     
     try {
       // Execute CadQuery code and get STL blob
       const stlBlob = await executeCadQuery(gtCode);
       
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       // Create a File from the blob
       const codeFile = new File([stlBlob], `gt_cadquery.stl`, { type: 'model/stl' });
@@ -292,7 +277,6 @@ export default function App() {
       setStatus(`✓ GT generated from CadQuery code`);
     } catch (err) {
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to generate GT from CadQuery code: ${err.message}`);
     } finally {
@@ -332,8 +316,6 @@ export default function App() {
     setResult(null);
 
     let exportWarningTimer = null;
-    let slowExportTimer = null;
-
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
@@ -342,17 +324,12 @@ export default function App() {
         
         exportWarningTimer = setTimeout(() => {
           setLoadingLabel("Exporting GT to STL...");
-          showError("STL export is taking longer than expected. This is normal for complex models.");
-        }, 3000);
-        
-        slowExportTimer = setTimeout(() => {
-          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-        }, 8000);
+          showError(STL_EXPORT_WARNING_MESSAGE);
+        }, 10000);
         
         gtFileToSend = await executeCadQuery(gtCode);
         
         clearTimeout(exportWarningTimer);
-        clearTimeout(slowExportTimer);
       }
 
       // Handle candidate: already a file (could be STL or CadQuery-generated)
@@ -365,7 +342,6 @@ export default function App() {
       setStatus("Done!");
     } catch (err) {
       if (exportWarningTimer) clearTimeout(exportWarningTimer);
-      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(err.message);
       showError(`Similarity computation failed: ${err.message}`);
     } finally {
@@ -390,8 +366,6 @@ export default function App() {
     setLoadingLabel("Aligning models");
     
     let exportWarningTimer = null;
-    let slowExportTimer = null;
-    
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
@@ -400,17 +374,12 @@ export default function App() {
         
         exportWarningTimer = setTimeout(() => {
           setLoadingLabel("Exporting GT to STL...");
-          showError("STL export is taking longer than expected. This is normal for complex models.");
-        }, 3000);
-        
-        slowExportTimer = setTimeout(() => {
-          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-        }, 8000);
+          showError(STL_EXPORT_WARNING_MESSAGE);
+        }, 10000);
         
         gtFileToSend = await executeCadQuery(gtCode);
         
         clearTimeout(exportWarningTimer);
-        clearTimeout(slowExportTimer);
       }
 
       setLoadingLabel("Aligning models");
@@ -441,7 +410,6 @@ export default function App() {
       setStatus("Models aligned!");
     } catch (err) {
       if (exportWarningTimer) clearTimeout(exportWarningTimer);
-      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(`Alignment error: ${err.message}`);
       showError(`Alignment failed: ${err.message}`);
       console.error(err);
@@ -455,18 +423,41 @@ export default function App() {
     <div className="app-shell">
       {/* Error/Info Banner */}
       {error && (
-        <div className={`error-banner ${error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'info-banner' : ''}`}>
-          <div className="error-content">
-            <span className="error-icon">
-              {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? '💡' : '⚠️'}
-            </span>
-            <span className="error-message">{error.message}</span>
-            <button className="error-dismiss" onClick={dismissError} title="Dismiss">
-              ✕
-            </button>
+        <div className="error-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
+          <div className={`error-modal ${error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'info-modal' : ''}`}>
+            <div className="error-modal-header">
+              <div className="error-modal-title-wrap">
+                <span className="error-icon">
+                  {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? '💡' : '⚠️'}
+                </span>
+                <h3 className="error-modal-title" id="error-modal-title">
+                  {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'Notice' : 'Error'}
+                </h3>
+              </div>
+              <button className="error-dismiss" onClick={dismissError} title="Dismiss">
+                ✕
+              </button>
+            </div>
+            <p className="error-modal-message">
+              {error.message}
+              {error.message.includes('STL export is taking longer') && (
+                <>
+                  {" "}
+                  <a
+                    className="error-modal-link"
+                    href={CQEDITOR_HELP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CQ-Editor
+                  </a>
+                </>
+              )}
+            </p>
           </div>
         </div>
       )}
+      
       
       <div className="app-header">
         <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>

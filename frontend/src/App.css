@@ -24,44 +24,53 @@ body {
   margin: 0 auto;
 }
 
-/* Error Banner */
-.error-banner {
+/* Error Modal */
+.error-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
+  bottom: 0;
   z-index: 10000;
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
-  border-bottom: 2px solid #991b1b;
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
-  animation: slideDown 0.3s ease-out;
-}
-
-/* Info Banner (for non-error messages like tips) */
-.error-banner.info-banner {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  border-bottom: 2px solid #b45309;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
-}
-
-@keyframes slideDown {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.error-content {
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 1rem 2.25rem;
+  background: rgba(2, 6, 23, 0.72);
   display: flex;
   align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.error-modal {
+  width: min(560px, 92vw);
+  background: linear-gradient(135deg, #991b1b, #7f1d1d);
+  border: 1px solid #ef4444;
+  border-radius: 14px;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
+  padding: 1rem 1.1rem;
+}
+
+.error-modal.info-modal {
+  background: linear-gradient(135deg, #b45309, #92400e);
+  border-color: #f59e0b;
+}
+
+.error-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
+}
+
+.error-modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.error-modal-title {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
 .error-icon {
@@ -69,12 +78,23 @@ body {
   flex-shrink: 0;
 }
 
-.error-message {
-  flex: 1;
+.error-modal-message {
+  margin: 0.75rem 0 0;
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 500;
   line-height: 1.4;
+  white-space: pre-line;
+}
+
+.error-modal-link {
+  color: #e0f2fe;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.error-modal-link:hover {
+  color: #ffffff;
 }
 
 .error-dismiss {
