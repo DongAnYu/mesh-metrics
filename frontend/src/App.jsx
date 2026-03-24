@@ -483,7 +483,7 @@ Tips:
       
       
       <div className="app-header">
-        <h2 className="app-title">STL/STEP Similarity & Visual Comparison Tool</h2>
+        <h2 className="app-title">Mesh Metrics</h2>
         <p className="app-subtitle">Upload, overlay, tune weights, and measure alignment quality.</p>
       </div>
 
