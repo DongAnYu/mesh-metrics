@@ -2,7 +2,7 @@ from io import BytesIO
 import numpy as np
 import trimesh
 from scipy.spatial import cKDTree
-from utils import safe_sample
+from utils import safe_sample, load_mesh_from_upload
 import config
 
 # -------------------------------------------------
@@ -155,7 +155,7 @@ def compute_mesh_metrics(gt_mesh, comp_mesh, chamfer, max_dist, S):
 # -------------------------------------------------
 # Main Compute Function (FastAPI calls this)
 # -------------------------------------------------
-def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
+def compute_similarity(bytesA, bytesB, fileA_name=None, fileB_name=None, user_weights=None, user_sharpness=None):
     """Compute similarity between two meshes using alignment engine and normalized metrics.
     
     Process:
@@ -167,8 +167,8 @@ def compute_similarity(bytesA, bytesB, user_weights=None, user_sharpness=None):
     6. Compute bbox/area/volume metrics on aligned geometry
     7. Return comprehensive diagnostics
     """
-    meshA = trimesh.load(BytesIO(bytesA), file_type="stl")
-    meshB = trimesh.load(BytesIO(bytesB), file_type="stl")
+    meshA = load_mesh_from_upload(bytesA, fileA_name)
+    meshB = load_mesh_from_upload(bytesB, fileB_name)
 
     # Compute scene diagonal for normalization (scale-invariant similarity)
     diag = np.linalg.norm(meshA.bounds[1] - meshA.bounds[0])

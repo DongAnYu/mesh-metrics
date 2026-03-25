@@ -51,6 +51,7 @@ const BACKEND_BASE    = getBackendBase();
 const BACKEND_URL     = `${BACKEND_BASE}/compare`;
 const BACKEND_ALIGN   = `${BACKEND_BASE}/align`;
 const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
+const BACKEND_PREPARE = `${BACKEND_BASE}/mesh/prepare`;
 
 console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
 
@@ -181,4 +182,31 @@ export async function executeCadQuery(code) {
     console.error("❌ executeCadQuery failed:", error);
     throw error;
   }
+}
+
+export async function prepareMeshForViewer(file) {
+  const form = new FormData();
+  form.append("file", file);
+
+  console.info("📤 Calling prepareMeshForViewer:", BACKEND_PREPARE, "for", file?.name);
+
+  const res = await fetchWithFallback(BACKEND_PREPARE, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const msg = await res.text();
+    try {
+      const errorJson = JSON.parse(msg);
+      const errorMessage = errorJson.message || errorJson.error || msg;
+      throw new Error(`Mesh preparation error (${res.status}): ${errorMessage}`);
+    } catch {
+      throw new Error(`Mesh preparation error (${res.status}): ${msg}`);
+    }
+  }
+
+  const stlBlob = await res.blob();
+  const baseName = (file?.name || "model").replace(/\.[^/.]+$/, "");
+  return new File([stlBlob], `${baseName}.stl`, { type: "model/stl" });
 }

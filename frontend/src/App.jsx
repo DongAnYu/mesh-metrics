@@ -1,12 +1,21 @@
 import { useState, useEffect } from "react";
-import { computeSimilarity, executeCadQuery } from "./api";
+import { computeSimilarity, executeCadQuery, prepareMeshForViewer } from "./api";
 import "./App.css";
 import VisualCompare from "./VisualCompare";
 import { computeAlignment } from "./api";
 
 export default function App() {
+  const ACCEPTED_MODEL_EXTENSIONS = ".stl,.step,.stp";
+  const CQEDITOR_HELP_URL = "https://cadquery.readthedocs.io/en/latest/installation.html#adding-a-nicer-gui-via-cq-editor";
+  const STL_EXPORT_WARNING_MESSAGE = `STL export is taking longer than expected. This is normal for complex models.
+
+Tips:
+- To speed up, export the STL/STEP via CQ-Editor (click the CQ-Editor link).
+`;
+
   // 🟢 Phase 1: New state structure (GT + candidates)
   const [gtFile, setGtFile] = useState(null);
+  const [gtDisplayName, setGtDisplayName] = useState(null);
   const [gtCentroid, setGtCentroid] = useState(null);
   const [worstDiscrepancyPoint, setWorstDiscrepancyPoint] = useState(null);
   const [sceneDiagonal, setSceneDiagonal] = useState(null);
@@ -34,11 +43,12 @@ export default function App() {
   const [error, setError] = useState(null); // { message: string, timestamp: number }
   
   // Computed values from new state structure
+  const activeCandidate = candidates.find(c => c.id === activeCandidateId) || null;
   const fileA = gtMode === 'file' ? gtFile : gtGeneratedFile;
-  const fileB = candidates.find(c => c.id === activeCandidateId)?.file || null;
-  const alignment = candidates.find(c => c.id === activeCandidateId)?.alignment || null;
+  const fileB = activeCandidate?.file || null;
+  const alignment = activeCandidate?.alignment || null;
   const surfaceCentroidA = gtCentroid;
-  const surfaceCentroidB = candidates.find(c => c.id === activeCandidateId)?.centroid || null;
+  const surfaceCentroidB = activeCandidate?.centroid || null;
 
   const [weights, setWeights] = useState({
     "chamfer": 0.6,
@@ -63,10 +73,6 @@ export default function App() {
 
   function showError(message) {
     setError({ message, timestamp: Date.now() });
-    // Auto-dismiss after 15 seconds for informational messages (CQ-Editor tips)
-    // or 10 seconds for actual errors
-    const dismissTime = message.includes('CQ-Editor') ? 40000 : 10000;
-    setTimeout(() => setError(null), dismissTime);
   }
 
   function dismissError() {
@@ -75,6 +81,25 @@ export default function App() {
 
   function strictnessToSharpness(strictnessPercent) {
     return 1 + (strictnessPercent / 100) * 19;
+  }
+
+  async function prepareUploadedMesh(file, label = "model") {
+    if (!file) return null;
+
+    setIsLoading(true);
+    setLoadingLabel(`Preparing ${label}`);
+    try {
+      const preparedFile = await prepareMeshForViewer(file);
+      return preparedFile;
+    } catch (err) {
+      const message = err?.message || `Failed to prepare ${label}`;
+      setStatus(message);
+      showError(message);
+      return null;
+    } finally {
+      setIsLoading(false);
+      setLoadingLabel("");
+    }
   }
 
   function getSharpnessFromStrictness() {
@@ -134,13 +159,8 @@ export default function App() {
     let exportWarningTimer = null;
     exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 5000); // Show warning after 5 seconds
-    
-    let slowExportTimer = null;
-    slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 10000); // Show recommendation after 10 seconds
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000); // Show warning after 10 seconds
     
     try {
       console.log("🚀 Calling executeCadQuery...");
@@ -149,7 +169,6 @@ export default function App() {
       
       // Clear timers if export completed
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -165,6 +184,7 @@ export default function App() {
           id: newId, 
           file: codeFile, 
           isCadQuery: true,
+          displayName: codeFile.name,
           code: candidateCode // Store the code with the candidate
         }];
         console.log("✅ Candidates updated, new count:", updated.length);
@@ -179,7 +199,6 @@ export default function App() {
     } catch (err) {
       console.error("❌ Error in handleAddCandidateFromCode:", err);
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to execute CadQuery code: ${err.message}`);
     } finally {
@@ -212,12 +231,8 @@ export default function App() {
     // Timer to show warning banner for long operations
     let exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 3000);
-    
-    let slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 8000);
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000);
     
     try {
       console.log("🚀 Calling executeCadQuery...");
@@ -225,7 +240,6 @@ export default function App() {
       const stlBlob = await executeCadQuery(candidateCode);
       
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       console.log("✅ STL blob received, size:", stlBlob.size);
       
@@ -238,7 +252,7 @@ export default function App() {
       setCandidates(prev => {
         const updated = prev.map(c => 
           c.id === activeCandidateId 
-            ? { ...c, file: codeFile, code: candidateCode }
+            ? { ...c, file: codeFile, displayName: codeFile.name, code: candidateCode }
             : c
         );
         console.log("✅ Candidate updated");
@@ -250,7 +264,6 @@ export default function App() {
     } catch (err) {
       console.error("❌ Error in handleUpdateCandidateFromCode:", err);
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to update candidate from CadQuery code: ${err.message}`);
     } finally {
@@ -272,19 +285,14 @@ export default function App() {
     // Timer to show warning banner for long operations
     let exportWarningTimer = setTimeout(() => {
       setLoadingLabel("Exporting to STL...");
-      showError("STL export is taking longer than expected. This is normal for complex models.");
-    }, 3000);
-    
-    let slowExportTimer = setTimeout(() => {
-      showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-    }, 8000);
+      showError(STL_EXPORT_WARNING_MESSAGE);
+    }, 10000);
     
     try {
       // Execute CadQuery code and get STL blob
       const stlBlob = await executeCadQuery(gtCode);
       
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       
       // Create a File from the blob
       const codeFile = new File([stlBlob], `gt_cadquery.stl`, { type: 'model/stl' });
@@ -292,7 +300,6 @@ export default function App() {
       setStatus(`✓ GT generated from CadQuery code`);
     } catch (err) {
       clearTimeout(exportWarningTimer);
-      clearTimeout(slowExportTimer);
       setStatus(`CadQuery error: ${err.message}`);
       showError(`Failed to generate GT from CadQuery code: ${err.message}`);
     } finally {
@@ -332,8 +339,6 @@ export default function App() {
     setResult(null);
 
     let exportWarningTimer = null;
-    let slowExportTimer = null;
-
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
@@ -342,17 +347,12 @@ export default function App() {
         
         exportWarningTimer = setTimeout(() => {
           setLoadingLabel("Exporting GT to STL...");
-          showError("STL export is taking longer than expected. This is normal for complex models.");
-        }, 3000);
-        
-        slowExportTimer = setTimeout(() => {
-          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-        }, 8000);
+          showError(STL_EXPORT_WARNING_MESSAGE);
+        }, 10000);
         
         gtFileToSend = await executeCadQuery(gtCode);
         
         clearTimeout(exportWarningTimer);
-        clearTimeout(slowExportTimer);
       }
 
       // Handle candidate: already a file (could be STL or CadQuery-generated)
@@ -365,7 +365,6 @@ export default function App() {
       setStatus("Done!");
     } catch (err) {
       if (exportWarningTimer) clearTimeout(exportWarningTimer);
-      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(err.message);
       showError(`Similarity computation failed: ${err.message}`);
     } finally {
@@ -390,8 +389,6 @@ export default function App() {
     setLoadingLabel("Aligning models");
     
     let exportWarningTimer = null;
-    let slowExportTimer = null;
-    
     try {
       // Handle GT: execute CadQuery if needed
       let gtFileToSend = fileA;
@@ -400,17 +397,12 @@ export default function App() {
         
         exportWarningTimer = setTimeout(() => {
           setLoadingLabel("Exporting GT to STL...");
-          showError("STL export is taking longer than expected. This is normal for complex models.");
-        }, 3000);
-        
-        slowExportTimer = setTimeout(() => {
-          showError("STL export is taking a long time. For very complex models, consider using CQ-Editor to generate and download STL files directly, then upload them here to save time.");
-        }, 8000);
+          showError(STL_EXPORT_WARNING_MESSAGE);
+        }, 10000);
         
         gtFileToSend = await executeCadQuery(gtCode);
         
         clearTimeout(exportWarningTimer);
-        clearTimeout(slowExportTimer);
       }
 
       setLoadingLabel("Aligning models");
@@ -441,7 +433,6 @@ export default function App() {
       setStatus("Models aligned!");
     } catch (err) {
       if (exportWarningTimer) clearTimeout(exportWarningTimer);
-      if (slowExportTimer) clearTimeout(slowExportTimer);
       setStatus(`Alignment error: ${err.message}`);
       showError(`Alignment failed: ${err.message}`);
       console.error(err);
@@ -455,18 +446,41 @@ export default function App() {
     <div className="app-shell">
       {/* Error/Info Banner */}
       {error && (
-        <div className={`error-banner ${error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'info-banner' : ''}`}>
-          <div className="error-content">
-            <span className="error-icon">
-              {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? '💡' : '⚠️'}
-            </span>
-            <span className="error-message">{error.message}</span>
-            <button className="error-dismiss" onClick={dismissError} title="Dismiss">
-              ✕
-            </button>
+        <div className="error-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="error-modal-title">
+          <div className={`error-modal ${error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'info-modal' : ''}`}>
+            <div className="error-modal-header">
+              <div className="error-modal-title-wrap">
+                <span className="error-icon">
+                  {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? '💡' : '⚠️'}
+                </span>
+                <h3 className="error-modal-title" id="error-modal-title">
+                  {error.message.includes('CQ-Editor') || error.message.includes('taking longer') ? 'Notice' : 'Error'}
+                </h3>
+              </div>
+              <button className="error-dismiss" onClick={dismissError} title="Dismiss">
+                ✕
+              </button>
+            </div>
+            <p className="error-modal-message">
+              {error.message}
+              {error.message.includes('STL export is taking longer') && (
+                <>
+                  {" "}
+                  <a
+                    className="error-modal-link"
+                    href={CQEDITOR_HELP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    CQ-Editor
+                  </a>
+                </>
+              )}
+            </p>
           </div>
         </div>
       )}
+      
       
       <div className="app-header">
         <h2 className="app-title">STL Similarity & Visual Comparison Tool</h2>
@@ -490,7 +504,7 @@ export default function App() {
                       }
                     }}
                     disabled={gtCode.trim().length > 0}
-                    title={gtCode.trim() ? "Clear CadQuery code first to upload a file" : "Upload STL file"}
+                    title={gtCode.trim() ? "Clear CadQuery code first to upload a file" : "Upload STL or STEP file"}
                   >
                     📁 File
                   </button>
@@ -514,26 +528,29 @@ export default function App() {
                 <>
                   <input 
                     type="file" 
-                    accept=".stl" 
-                    onChange={(e) => {
+                    accept={ACCEPTED_MODEL_EXTENSIONS}
+                    onChange={async (e) => {
                       const file = e.target.files[0];
-                      setGtFile(file);
+                      const preparedFile = await prepareUploadedMesh(file, "ground-truth model");
+                      if (!preparedFile) return;
+
+                      setGtFile(preparedFile);
+                      setGtDisplayName(file.name);
                       // Clear generated file if switching to upload
-                      if (file) {
-                        setGtGeneratedFile(null);
-                        setGtCode('');
-                      }
+                      setGtGeneratedFile(null);
+                      setGtCode('');
                     }} 
                     className="file-input" 
                   />
                   {(gtFile || gtGeneratedFile) && (
                     <div className="file-name-row">
-                      <p className="file-name">✓ {gtFile?.name || "Generated from CadQuery"}</p>
+                      <p className="file-name">✓ {gtDisplayName || gtFile?.name || "Generated from CadQuery"}</p>
                       <button 
                         className="clear-file-button"
                         onClick={() => {
                           setGtFile(null);
                           setGtGeneratedFile(null);
+                          setGtDisplayName(null);
                         }}
                         title="Clear file"
                       >
@@ -601,9 +618,9 @@ export default function App() {
               {/* Show active candidate info */}
               {fileB && (
                 <p className="file-name">
-                  Active: {fileB.name}
-                  {candidates.find(c => c.id === activeCandidateId)?.isCadQuery && 
-                    ` (${candidates.find(c => c.id === activeCandidateId)?.code?.length || 0} chars)`
+                  Active: {activeCandidate?.displayName || fileB.name}
+                  {activeCandidate?.isCadQuery && 
+                    ` (${activeCandidate?.code?.length || 0} chars)`
                   }
                 </p>
               )}
@@ -880,22 +897,25 @@ export default function App() {
               <label className="modal-option-card">
                 <input
                   type="file"
-                  accept=".stl"
+                  accept={ACCEPTED_MODEL_EXTENSIONS}
                   style={{ display: 'none' }}
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files[0];
                     if (file) {
+                      const preparedFile = await prepareUploadedMesh(file, "candidate model");
+                      if (!preparedFile) return;
+
                       const newId = Date.now().toString();
-                      setCandidates(prev => [...prev, { id: newId, file, isCadQuery: false }]);
+                      setCandidates(prev => [...prev, { id: newId, file: preparedFile, isCadQuery: false, displayName: file.name }]);
                       setActiveCandidateId(newId);
                       setShowAddCandidateModal(false);
-                    }
+                      }
                     e.target.value = '';
                   }}
                 />
                 <div className="modal-option-icon">📁</div>
-                <div className="modal-option-title">Upload STL File</div>
-                <div className="modal-option-description">Upload an existing STL file from your computer</div>
+                <div className="modal-option-title">Upload STL/STEP File</div>
+                <div className="modal-option-description">Upload an existing STL/STEP file from your computer</div>
               </label>
               
               {/* CadQuery Code Option */}

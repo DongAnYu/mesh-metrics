@@ -245,6 +245,8 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
   const [showRaw, setShowRaw] = useState(false);
   const [alignStatus, setAlignStatus] = useState("");
   const [showDiscrepancyArrow, setShowDiscrepancyArrow] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canvasContainerRef = useRef(null);
 
   useEffect(() => {
     console.log("🎯 VisualCompare received worstDiscrepancyPoint:", worstDiscrepancyPoint);
@@ -275,6 +277,15 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
     console.log("🧭 transformB in VisualCompare:", transformB);
   }, [transformB]);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === canvasContainerRef.current);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
   const hasBoth = Boolean(fileA && fileB);
 
   const scheme = COLOR_SCHEMES[colorScheme];
@@ -290,6 +301,20 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
     } catch (e) {
       setAlignStatus(`Error: ${e.message}`);
       console.error("Alignment error:", e);
+    }
+  };
+
+  const handleToggleFullscreen = async () => {
+    if (!canvasContainerRef.current) return;
+
+    try {
+      if (document.fullscreenElement === canvasContainerRef.current) {
+        await document.exitFullscreen();
+      } else {
+        await canvasContainerRef.current.requestFullscreen();
+      }
+    } catch (error) {
+      console.error("Fullscreen toggle failed:", error);
     }
   };
 
@@ -321,13 +346,13 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
             onClick={() => setShowA(!showA)}
             className={`control-button ${!showA ? "inactive" : ""}`}
           >
-            {showA ? "Hide" : "Show"} A
+            {showA ? "Hide" : "Show"} GT
           </button>
           <button
             onClick={() => setShowB(!showB)}
             className={`control-button ${!showB ? "inactive" : ""}`}
           >
-            {showB ? "Hide" : "Show"} B
+            {showB ? "Hide" : "Show"} CANDIDATE
           </button>
           <button
             onClick={() => setAnimating(!animating)}
@@ -414,7 +439,15 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
         )}
       </div>
 
-      <div className="visual-compare-canvas">
+      <div ref={canvasContainerRef} className={`visual-compare-canvas ${isFullscreen ? "is-fullscreen" : ""}`}>
+        <button
+          onClick={handleToggleFullscreen}
+          className="viewer-fullscreen-button"
+          disabled={!hasBoth}
+          title={isFullscreen ? "Exit fullscreen (Esc)" : "Enter fullscreen"}
+        >
+          {isFullscreen ? "⤢ Exit Fullscreen" : "⤢ Fullscreen"}
+        </button>
         {hasBoth ? (
           <Canvas 
             camera={{ position: [3, 3, 3], fov: 50, near: 0.01, far: 100000 }}
