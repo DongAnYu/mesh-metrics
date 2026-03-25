@@ -346,13 +346,13 @@ export default function VisualCompare({ fileA, fileB, transformB, centroidA, cen
             onClick={() => setShowA(!showA)}
             className={`control-button ${!showA ? "inactive" : ""}`}
           >
-            {showA ? "Hide" : "Show"} A
+            {showA ? "Hide" : "Show"} GT
           </button>
           <button
             onClick={() => setShowB(!showB)}
             className={`control-button ${!showB ? "inactive" : ""}`}
           >
-            {showB ? "Hide" : "Show"} B
+            {showB ? "Hide" : "Show"} CANDIDATE
           </button>
           <button
             onClick={() => setAnimating(!animating)}
