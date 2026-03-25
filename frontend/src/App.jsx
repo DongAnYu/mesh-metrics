@@ -682,7 +682,17 @@ Tips:
               <div className="weights-container">
                 <div className="weight-item">
                   <label className="weight-label">
-                    <span>Chamfer Distance</span>
+                    <span className="weight-label-main">
+                      <span>Chamfer Distance</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Measures point-to-point surface similarity between meshes"
+                        aria-label="Chamfer Distance description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{weights.chamfer}</span>
                   </label>
                   <p className="weight-description">Measures point-to-point surface similarity between meshes</p>
@@ -699,7 +709,17 @@ Tips:
 
                 <div className="weight-item">
                   <label className="weight-label">
-                    <span>Volume Difference</span>
+                    <span className="weight-label-main">
+                      <span>Volume Difference</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Compares the internal volume of both models"
+                        aria-label="Volume Difference description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{weights.volume}</span>
                   </label>
                   <p className="weight-description">Compares the internal volume of both models</p>
@@ -716,7 +736,17 @@ Tips:
 
                 <div className="weight-item">
                   <label className="weight-label">
-                    <span>Surface Area</span>
+                    <span className="weight-label-main">
+                      <span>Surface Area</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Evaluates the difference in total surface area"
+                        aria-label="Surface Area description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{weights.area}</span>
                   </label>
                   <p className="weight-description">Evaluates the difference in total surface area</p>
@@ -733,7 +763,17 @@ Tips:
 
                 <div className="weight-item">
                   <label className="weight-label">
-                    <span>Bounding Box</span>
+                    <span className="weight-label-main">
+                      <span>Bounding Box</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Compares the overall dimensions and extents"
+                        aria-label="Bounding Box description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{weights.bbox}</span>
                   </label>
                   <p className="weight-description">Compares the overall dimensions and extents</p>
@@ -750,7 +790,17 @@ Tips:
 
                 <div className="weight-item">
                   <label className="weight-label">
-                    <span>Maximum Distance</span>
+                    <span className="weight-label-main">
+                      <span>Maximum Distance</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Measures the largest deviation between surfaces"
+                        aria-label="Maximum Distance description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{weights.maxdist}</span>
                   </label>
                   <p className="weight-description">Measures the largest deviation between surfaces</p>
@@ -773,7 +823,17 @@ Tips:
               <div className="weights-container">
                 <div className="weight-item sharpness-item">
                   <label className="weight-label">
-                    <span>Chamfer Distance Strictness</span>
+                    <span className="weight-label-main">
+                      <span>Chamfer Distance Strictness</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Controls how sensitive Chamfer similarity is: higher strictness penalizes small surface differences more strongly."
+                        aria-label="Chamfer Distance Strictness description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{strictness.chamfer}%</span>
                   </label>
                   <input 
@@ -794,7 +854,17 @@ Tips:
 
                 <div className="weight-item sharpness-item">
                   <label className="weight-label">
-                    <span>Max Distance Strictness</span>
+                    <span className="weight-label-main">
+                      <span>Max Distance Strictness</span>
+                      <button
+                        type="button"
+                        className="help-eye"
+                        data-tooltip="Controls sensitivity to worst-case deviation: higher strictness makes large outlier distances impact score more."
+                        aria-label="Max Distance Strictness description"
+                      >
+                        👁
+                      </button>
+                    </span>
                     <span className="weight-value">{strictness.maxdist}%</span>
                   </label>
                   <input 
