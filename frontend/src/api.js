@@ -1,212 +1,226 @@
-// ── Backend targets ──────────────────────────────────────────────
-const RAILWAY_BACKEND = "https://mesh-metrics-production.up.railway.app";
-const RENDER_BACKEND  = "https://mesh-metrics.onrender.com";
-const LOCAL_BACKEND   = "http://localhost:8000";
+// ── Backend Configuration ───────────────────────────────────────
 
-// ── Pick primary backend based on where the frontend is running ─
-function getBackendBase() {
-  const hostname = window.location.hostname;
+const API_BASE = import.meta.env.VITE_API_URL;
+const FALLBACK_API_BASE = import.meta.env.VITE_FALLBACK_API_URL || null;
 
-  // Local development → local backend (no fallback needed)
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return LOCAL_BACKEND;
-  }
+const API = {
+  compare: "/compare",
+  align: "/align",
+  cadquery: "/cadquery",
+  prepare: "/mesh/prepare",
+};
 
-  // Production (Vercel / custom domain / anything else) → Railway first
-  return RAILWAY_BACKEND;
-}
+console.info(
+  `🔧 Backend configured: ${API_BASE}` +
+  (FALLBACK_API_BASE ? ` (fallback: ${FALLBACK_API_BASE})` : "")
+);
 
-// ── Automatic Railway → Render fallback ─────────────────────────
-// If the request targets Railway and fails (network error OR HTTP 5xx),
-// retry the same request against Render once.
-async function fetchWithFallback(url, options) {
+// ── Generic Fetch With Optional Fallback ────────────────────────
+
+async function fetchWithFallback(path, options) {
+  const primaryUrl = `${API_BASE}${path}`;
+
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(primaryUrl, options);
 
-    // Railway responded but with a server error → fall back
-    if (!res.ok && url.includes("railway.app")) {
-      throw new Error(`Railway returned ${res.status}`);
+    // Success
+    if (res.ok) {
+      return res;
+    }
+
+    // No fallback configured
+    if (!FALLBACK_API_BASE) {
+      return res;
+    }
+
+    // Retry on server-side failure
+    if (res.status >= 500) {
+      throw new Error(`Primary backend returned ${res.status}`);
     }
 
     return res;
+
   } catch (err) {
-    // Only fall back when the original target was Railway
-    if (url.includes("railway.app")) {
-      console.warn("⚠️ Railway unavailable, falling back to Render:", err.message);
-
-      const fallbackUrl = url.replace(
-        "mesh-metrics-production.up.railway.app",
-        "mesh-metrics.onrender.com"
-      );
-
-      return fetch(fallbackUrl, options);
+    if (!FALLBACK_API_BASE) {
+      throw err;
     }
 
-    // Local or other host — no fallback, just re-throw
-    throw err;
+    console.warn(
+      "⚠️ Primary backend unavailable, falling back:",
+      err.message
+    );
+
+    const fallbackUrl = `${FALLBACK_API_BASE}${path}`;
+
+    return fetch(fallbackUrl, options);
   }
 }
 
-const BACKEND_BASE    = getBackendBase();
-const BACKEND_URL     = `${BACKEND_BASE}/compare`;
-const BACKEND_ALIGN   = `${BACKEND_BASE}/align`;
-const BACKEND_CADQUERY = `${BACKEND_BASE}/cadquery`;
-const BACKEND_PREPARE = `${BACKEND_BASE}/mesh/prepare`;
+// ── Shared Error Parser ─────────────────────────────────────────
 
-console.info(`🔧 Backend configured: ${BACKEND_BASE} (frontend: ${window.location.hostname})`);
+async function parseErrorResponse(res, prefix = "Backend error") {
+  const msg = await res.text();
+
+  try {
+    const errorJson = JSON.parse(msg);
+
+    throw new Error(
+      `${prefix} (${res.status}): ${
+        errorJson.message ||
+        errorJson.error ||
+        msg
+      }`
+    );
+  } catch {
+    throw new Error(`${prefix} (${res.status}): ${msg}`);
+  }
+}
+
+// ── Similarity ──────────────────────────────────────────────────
 
 export async function computeSimilarity(fileA, fileB, weights, sharpness) {
   const form = new FormData();
+
   form.append("fileA", fileA);
   form.append("fileB", fileB);
   form.append("weights", JSON.stringify(weights));
   form.append("sharpness", JSON.stringify(sharpness));
 
-  console.info("📤 Calling computeSimilarity:", BACKEND_URL);
+  console.info("📤 Calling computeSimilarity");
 
-  const res = await fetchWithFallback(BACKEND_URL, {
+  const res = await fetchWithFallback(API.compare, {
     method: "POST",
     body: form,
   });
 
   if (!res.ok) {
-    const msg = await res.text();
-    console.error("❌ API error:", res.status, msg);
-    
-    // Try to parse error message from backend JSON
-    try {
-      const errorJson = JSON.parse(msg);
-      const errorMessage = errorJson.message || errorJson.error || msg;
-      throw new Error(`Backend error (${res.status}): ${errorMessage}`);
-    } catch (parseError) {
-      throw new Error(`Backend error (${res.status}): ${msg}`);
-    }
+    await parseErrorResponse(res, "Similarity error");
   }
 
   const json = await res.json();
-  
-  // Check if the response contains an error even with 200 status
+
   if (json.error) {
-    console.error("❌ Similarity returned error:", json);
-    throw new Error(`Similarity computation failed: ${json.error}`);
+    throw new Error(
+      `Similarity computation failed: ${json.error}`
+    );
   }
-  
+
   console.info("✅ computeSimilarity response:", json);
+
   return json;
 }
+
+// ── Alignment ───────────────────────────────────────────────────
 
 export async function computeAlignment(fileA, fileB) {
   const form = new FormData();
+
   form.append("fileA", fileA);
   form.append("fileB", fileB);
 
-  console.info("📤 Calling computeAlignment:", BACKEND_ALIGN);
+  console.info("📤 Calling computeAlignment");
 
-  const res = await fetchWithFallback(BACKEND_ALIGN, {
+  const res = await fetchWithFallback(API.align, {
     method: "POST",
     body: form,
   });
 
   if (!res.ok) {
-    const msg = await res.text();
-    console.error("❌ Align API error:", res.status, msg);
-    
-    // Try to parse error message from backend JSON
-    try {
-      const errorJson = JSON.parse(msg);
-      const errorMessage = errorJson.message || errorJson.error || msg;
-      throw new Error(`Alignment error (${res.status}): ${errorMessage}`);
-    } catch (parseError) {
-      throw new Error(`Alignment error (${res.status}): ${msg}`);
-    }
+    await parseErrorResponse(res, "Alignment error");
   }
 
   const json = await res.json();
-  
-  // Check if the response contains an error even with 200 status
+
   if (json.status === "error") {
-    console.error("❌ Alignment returned error:", json);
-    throw new Error(`Alignment failed: ${json.message || "Unknown error"}`);
+    throw new Error(
+      `Alignment failed: ${json.message || "Unknown error"}`
+    );
   }
-  
+
   console.info("✅ computeAlignment response:", json);
+
   return json;
 }
 
+// ── CadQuery ────────────────────────────────────────────────────
+
 export async function executeCadQuery(code) {
-  console.info("📤 Calling executeCadQuery:", BACKEND_CADQUERY);
-  
-  try {
-    const res = await fetchWithFallback(BACKEND_CADQUERY, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ code }),
-    });
+  console.info("📤 Calling executeCadQuery");
 
-    console.info("📡 Response status:", res.status);
-    console.info("📡 Response headers:", Object.fromEntries(res.headers.entries()));
+  const res = await fetchWithFallback(API.cadquery, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ code }),
+  });
 
-    // Check content type to determine if it's an error or STL
-    const contentType = res.headers.get("content-type");
-    console.info("📡 Content-Type:", contentType);
-
-    if (!res.ok) {
-      const msg = await res.text();
-      console.error("❌ CadQuery API error:", res.status, msg);
-      
-      // Try to parse error message from backend JSON
-      try {
-        const errorJson = JSON.parse(msg);
-        const errorMessage = errorJson.message || errorJson.error || msg;
-        throw new Error(`CadQuery error (${res.status}): ${errorMessage}`);
-      } catch (parseError) {
-        throw new Error(`CadQuery error (${res.status}): ${msg}`);
-      }
-    }
-
-    // Check if response is JSON (error) even with 200 status
-    if (contentType && contentType.includes("application/json")) {
-      const errorJson = await res.json();
-      console.error("❌ CadQuery returned error:", errorJson);
-      const errorMessage = errorJson.message || errorJson.error || "Unknown CadQuery error";
-      throw new Error(`CadQuery execution failed: ${errorMessage}`);
-    }
-
-    // Response should be STL file bytes
-    const blob = await res.blob();
-    console.info("✅ executeCadQuery response: STL file received, size:", blob.size, "bytes");
-    return blob;
-  } catch (error) {
-    console.error("❌ executeCadQuery failed:", error);
-    throw error;
+  if (!res.ok) {
+    await parseErrorResponse(res, "CadQuery error");
   }
+
+  const contentType = res.headers.get("content-type");
+
+  if (
+    contentType &&
+    contentType.includes("application/json")
+  ) {
+    const errorJson = await res.json();
+
+    throw new Error(
+      `CadQuery execution failed: ${
+        errorJson.message ||
+        errorJson.error ||
+        "Unknown error"
+      }`
+    );
+  }
+
+  const blob = await res.blob();
+
+  console.info(
+    "✅ STL generated:",
+    blob.size,
+    "bytes"
+  );
+
+  return blob;
 }
+
+// ── Mesh Preparation ────────────────────────────────────────────
 
 export async function prepareMeshForViewer(file) {
   const form = new FormData();
+
   form.append("file", file);
 
-  console.info("📤 Calling prepareMeshForViewer:", BACKEND_PREPARE, "for", file?.name);
+  console.info(
+    "📤 Calling prepareMeshForViewer:",
+    file?.name
+  );
 
-  const res = await fetchWithFallback(BACKEND_PREPARE, {
+  const res = await fetchWithFallback(API.prepare, {
     method: "POST",
     body: form,
   });
 
   if (!res.ok) {
-    const msg = await res.text();
-    try {
-      const errorJson = JSON.parse(msg);
-      const errorMessage = errorJson.message || errorJson.error || msg;
-      throw new Error(`Mesh preparation error (${res.status}): ${errorMessage}`);
-    } catch {
-      throw new Error(`Mesh preparation error (${res.status}): ${msg}`);
-    }
+    await parseErrorResponse(
+      res,
+      "Mesh preparation error"
+    );
   }
 
   const stlBlob = await res.blob();
-  const baseName = (file?.name || "model").replace(/\.[^/.]+$/, "");
-  return new File([stlBlob], `${baseName}.stl`, { type: "model/stl" });
+
+  const baseName =
+    (file?.name || "model").replace(/\.[^/.]+$/, "");
+
+  return new File(
+    [stlBlob],
+    `${baseName}.stl`,
+    {
+      type: "model/stl",
+    }
+  );
 }
