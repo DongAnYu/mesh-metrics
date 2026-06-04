@@ -1,7 +1,7 @@
 // ── Backend Configuration ───────────────────────────────────────
 
-const API_BASE = import.meta.env.VITE_API_URL;
-const FALLBACK_API_BASE = import.meta.env.VITE_FALLBACK_API_URL || null;
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const FALLBACK_API_BASE = import.meta.env.VITE_FALLBACK_API_URL || "http://localhost:8000";
 
 const API = {
   compare: "/compare",
