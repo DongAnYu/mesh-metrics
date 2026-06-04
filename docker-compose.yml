@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mesh-metrics-backend
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mesh-metrics-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
