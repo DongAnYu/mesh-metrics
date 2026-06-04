@@ -193,7 +193,7 @@ Backend available at → `http://localhost:8000`
 
 ### 3. Docker Compose
 
-The recommended way to run both services together on a single machine. Uses the existing `docker-compose.yml` in the project root alongside `backend/Dockerfile` and `frontend/Dockerfile`.
+The recommended way to run both services together on a single machine. Uses the existing `docker-compose.yml` in the project root.
 
 **File:** `docker-compose.yml`
 
@@ -214,7 +214,7 @@ docker compose logs -f
 docker compose up --build backend
 ```
 
-Frontend available at → `http://localhost:80`
+Frontend available at → `http://localhost:3000`
 Backend available at → `http://localhost:8000`
 
 ---
