@@ -29,7 +29,6 @@
   - [1. Traditional (Local Dev)](#1-traditional-local-development)
   - [2. Docker (Manual)](#2-docker-manual)
   - [3. Docker Compose](#3-docker-compose)
-  - [4. Kubernetes](#4-kubernetes)
 - [Configuration](#-configuration)
 - [Contributing](#-contributing)
 
@@ -216,59 +215,6 @@ docker compose up --build backend
 
 Frontend available at → `http://localhost:3000`
 Backend available at → `http://localhost:8000`
-
----
-
-### 4. Kubernetes
-
-For production deployments with scaling, rolling updates, and high availability. Uses the same `backend/Dockerfile` and `frontend/Dockerfile` — build and push them to your registry, then apply the manifests.
-
-> **Note:** Replace `<YOUR_REGISTRY>` with your container registry (e.g. `ghcr.io/yourorg`, `docker.io/yourusername`).
-
-#### Step 1 — Build and push images
-
-```bash
-# Uses backend/Dockerfile
-docker build -t <YOUR_REGISTRY>/mesh-metrics-backend:latest ./backend
-docker push <YOUR_REGISTRY>/mesh-metrics-backend:latest
-
-# Uses frontend/Dockerfile
-docker build -t <YOUR_REGISTRY>/mesh-metrics-frontend:latest ./frontend
-docker push <YOUR_REGISTRY>/mesh-metrics-frontend:latest
-```
-
-#### Step 2 — Apply manifests
-
-**Files:** `k8s/backend-deployment.yaml` · `k8s/frontend-deployment.yaml` · `k8s/ingress.yaml` *(optional)*
-
-```bash
-# Create a namespace (optional but recommended)
-kubectl create namespace mesh-metrics
-
-# Apply all manifests
-kubectl apply -f k8s/ -n mesh-metrics
-```
-
-#### Step 3 — Manage the deployment
-
-```bash
-# Check pod and service status
-kubectl get pods -n mesh-metrics
-kubectl get services -n mesh-metrics
-
-# View logs
-kubectl logs -f deployment/mesh-metrics-backend -n mesh-metrics
-
-# Scale backend replicas
-kubectl scale deployment mesh-metrics-backend --replicas=4 -n mesh-metrics
-
-# Rolling update after pushing a new image
-kubectl rollout restart deployment/mesh-metrics-backend -n mesh-metrics
-kubectl rollout status deployment/mesh-metrics-backend -n mesh-metrics
-
-# Tear down
-kubectl delete -f k8s/ -n mesh-metrics
-```
 
 ---
 
