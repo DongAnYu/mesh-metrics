@@ -98,7 +98,7 @@ Upload two STL/STEP files, auto-align them via centroid + ICP registration, tune
 | Python | ≥ 3.12 | [python.org](https://python.org) |
 | uv | latest | `pip install uv` |
 | Docker | ≥ 24 *(optional)* | [docker.com](https://docker.com) |
-| kubectl | ≥ 1.28 *(optional)* | [kubernetes.io](https://kubernetes.io/docs/tasks/tools/) |
+
 
 ---
 
