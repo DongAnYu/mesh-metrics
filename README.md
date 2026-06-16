@@ -12,7 +12,7 @@
 
 **Upload. Align. Compare. Measure.**
 
-[🌐 Live Demo](https://dong-an-yu-portfolio.up.railway.app/#projects) · [📖 API Docs](http://localhost:8000/docs) · [🐛 Report Bug](https://github.com/DongAnYu/mesh-metrics/issues) · [💡 Request Feature](https://github.com/DongAnYu/mesh-metrics/issues)
+[🌐 Live Demo](https://mesh-metrics.vercel.app/) · [📖 API Docs](http://localhost:8000/docs) · [🐛 Report Bug](https://github.com/DongAnYu/mesh-metrics/issues) · [💡 Request Feature](https://github.com/DongAnYu/mesh-metrics/issues)
 
 </div>
 
