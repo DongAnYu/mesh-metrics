@@ -54,7 +54,7 @@ As AI-generated CAD and digital manufacturing scale, engineers need a faster and
 
 **Mesh Metrics** is an STL similarity and visual comparison platform for 3D engineering models.
 
-Upload two STL/STEP files, auto-align them via centroid + ICP registration, tune metric weights, and get an objective similarity score — all in the browser.
+Upload two STL/STEP files (or [CadQuery](https://cadquery.readthedocs.io/) Code), auto-align them via centroid + ICP registration, tune metric weights, and get an objective similarity score — all in the browser.
 
 ---
 
